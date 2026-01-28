@@ -13,21 +13,19 @@ def _default_sqlite_url() -> str:
     return "sqlite:///./mbti.db"
 
 
-def _normalize_database_url(url: str) -> str:
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url.removeprefix("postgres://")
-    if url.startswith("postgresql://") and "+psycopg" not in url and "+psycopg2" not in url:
-        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
-    return url
+# 获取环境变量，优先读取 MBTI_DATABASE_URL，其次是 DATABASE_URL，默认回退到本地 SQLite
+SQLALCHEMY_DATABASE_URL = os.getenv("MBTI_DATABASE_URL") or os.getenv("DATABASE_URL") or _default_sqlite_url()
 
+# 修复 Vercel/Render 等平台 Postgres URL 以 "postgres://" 开头导致 SQLAlchemy 报错的问题
+if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
+    SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-DATABASE_URL = _normalize_database_url(
-    os.getenv("MBTI_DATABASE_URL") or os.getenv("DATABASE_URL") or _default_sqlite_url()
-)
+# 仅针对 SQLite 使用 check_same_thread 参数
+connect_args = {"check_same_thread": False} if "sqlite" in SQLALCHEMY_DATABASE_URL else {}
 
 engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    SQLALCHEMY_DATABASE_URL,
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
