@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}完成答题 · MBTI{% endblock %}
+{% block content %}
+  <div class="card">
+    <h1>已完成答题</h1>
+    <p>下面是你的结果预览；选择分享链接有效期后生成最终报告。</p>
+    <div class="divider"></div>
+    <h2>类型预览：{{ type_code }}</h2>
+
+    <div class="bars">
+      {% for d in dimensions %}
+        <div class="bar">
+          <div class="bar-head">
+            <span>{{ d.dimension }}：{{ d.first_pole }} {{ d.first_percent }}% / {{ d.second_pole }} {{ d.second_percent }}%</span>
+            <span class="muted">差距 {{ d.gap_percent }}%</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width: {{ d.first_percent }}%"></div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card contrast">
+    <h3>生成报告与分享链接</h3>
+    <p class="muted">报告生成后会得到一个分享链接；分享页仅展示类型、四维百分比与完整报告。</p>
+    <form method="post" action="/finish">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="field">
+        <label>分享链接有效期</label>
+        <select name="share_expiry" required>
+          <option value="1d">1 天</option>
+          <option value="7d">7 天</option>
+          <option value="30d" selected>30 天</option>
+          <option value="permanent">永久</option>
+        </select>
+      </div>
+      <button class="btn primary" type="submit">生成最终报告</button>
+    </form>
+  </div>
+{% endblock %}

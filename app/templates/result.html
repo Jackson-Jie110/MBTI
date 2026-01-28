@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}结果 · MBTI{% endblock %}
+{% block content %}
+  <div class="card">
+    <h1>你的类型：{{ type_code }}</h1>
+    <p class="muted">仅展示类型、四维百分比与完整报告（不展示每题明细）。</p>
+    <div class="field">
+      <label>分享链接</label>
+      <div class="row compact">
+        <input class="input grow" id="share-url" value="{{ share_url }}" readonly />
+        <button class="btn" type="button" data-copy-target="#share-url">复制</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>四维百分比</h2>
+    <div class="bars">
+      {% for d in dimensions %}
+        <div class="bar">
+          <div class="bar-head">
+            <span>{{ d.dimension }}：{{ d.first_pole }} {{ d.first_percent }}% / {{ d.second_pole }} {{ d.second_percent }}%</span>
+            <span class="muted">差距 {{ d.gap_percent }}%</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width: {{ d.first_percent }}%"></div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>完整分析：{{ report.type_code }}（{{ report.title }}）</h2>
+    <p>{{ report.summary }}</p>
+
+    {% if report.boundary_notes %}
+      <div class="alert">
+        <strong>边界提示：</strong>
+        <ul>
+          {% for n in report.boundary_notes %}
+            <li>{{ n }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="divider"></div>
+    {% endif %}
+
+    <h3>优势</h3>
+    <ul>
+      {% for s in report.strengths %}
+        <li>{{ s }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3>盲点</h3>
+    <ul>
+      {% for s in report.blind_spots %}
+        <li>{{ s }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3>建议</h3>
+    <ul>
+      {% for s in report.advice %}
+        <li>{{ s }}</li>
+      {% endfor %}
+    </ul>
+
+    <h3>适合方向</h3>
+    <ul>
+      {% for s in report.suitable %}
+        <li>{{ s }}</li>
+      {% endfor %}
+    </ul>
+
+    <p class="muted">{{ report.disclaimer }}</p>
+    <div class="row">
+      <a class="btn" href="/">再测一次</a>
+    </div>
+  </div>
+{% endblock %}

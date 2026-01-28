@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}开始测试 · MBTI{% endblock %}
+{% block content %}
+  <div class="card">
+    <h1>MBTI 在线测试</h1>
+    <p>选择题量模式后开始作答（5 级量表，一题一页）。题目越多，结果通常更稳定。</p>
+
+    {% if error_message %}
+      <div class="alert">
+        {{ error_message }}
+        <p class="muted">管理后台：<a href="/admin">/admin</a>（需要登录）</p>
+      </div>
+    {% endif %}
+
+    {% if has_in_progress %}
+      <div class="alert">
+        <div class="row">
+          <a class="btn primary" href="/test">继续上次测试</a>
+          <a class="btn" href="#start-form">开始新的测试</a>
+        </div>
+        <p class="muted">提示：继续测试会回到上次进度；你也可以开始一套新的题。</p>
+      </div>
+      <div class="divider"></div>
+    {% endif %}
+
+    <form id="start-form" method="post" action="/start" class="field">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="field">
+        <label>题量模式</label>
+        <div class="mode-grid">
+          <label class="mode-card">
+            <input type="radio" name="mode" value="20" required />
+            <div class="mode-title">快速</div>
+            <div class="mode-meta">20 题 · 约 3–4 分钟</div>
+          </label>
+          <label class="mode-card">
+            <input type="radio" name="mode" value="40" checked required />
+            <div class="mode-title">标准</div>
+            <div class="mode-meta">40 题 · 约 6–8 分钟</div>
+          </label>
+          <label class="mode-card">
+            <input type="radio" name="mode" value="60" required />
+            <div class="mode-title">精确</div>
+            <div class="mode-meta">60 题 · 更稳定的结果</div>
+          </label>
+        </div>
+        <div class="muted">题目越多，测试结果越准确。</div>
+      </div>
+      <div class="field">
+        <label>保存进度时长（用于“保存并退出”后继续）</label>
+        <select name="resume_expiry" required>
+          <option value="1d">1 天</option>
+          <option value="7d">7 天</option>
+          <option value="30d" selected>30 天</option>
+          <option value="permanent">永久</option>
+        </select>
+      </div>
+      <button class="btn primary" type="submit">开始测试</button>
+    </form>
+  </div>
+{% endblock %}

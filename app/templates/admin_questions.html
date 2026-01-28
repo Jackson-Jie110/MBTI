@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}题库管理 · MBTI{% endblock %}
+{% block content %}
+  <div class="card">
+    <h1>题库管理</h1>
+    <p class="muted">需要管理员登录。</p>
+    <div class="row">
+      <a class="btn primary" href="/admin/questions/new">新增题目</a>
+      <a class="btn" href="/admin/export">导出 JSON</a>
+      <form method="post" action="/admin/logout" class="row" style="margin-left: auto">
+        <button class="btn" type="submit">退出登录</button>
+      </form>
+    </div>
+    <div class="divider"></div>
+
+    <form method="get" action="/admin/questions" class="row">
+      <select name="dimension">
+        <option value="" {% if not dimension %}selected{% endif %}>全部维度</option>
+        <option value="EI" {% if dimension=='EI' %}selected{% endif %}>EI</option>
+        <option value="SN" {% if dimension=='SN' %}selected{% endif %}>SN</option>
+        <option value="TF" {% if dimension=='TF' %}selected{% endif %}>TF</option>
+        <option value="JP" {% if dimension=='JP' %}selected{% endif %}>JP</option>
+      </select>
+      <button class="btn" type="submit">筛选</button>
+    </form>
+
+    <div class="divider"></div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>维度</th>
+          <th>同意倾向</th>
+          <th>题目</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in questions %}
+          <tr>
+            <td>{{ q.id }}</td>
+            <td>{{ q.dimension }}</td>
+            <td>{{ q.agree_pole }}</td>
+            <td>
+              <a href="/admin/questions/{{ q.id }}">{{ q.text }}</a>
+            </td>
+            <td>
+              {% if q.is_active %}
+                <span class="pill">启用</span>
+              {% else %}
+                <span class="pill danger">停用</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card contrast">
+    <h2>导入 JSON</h2>
+    <p class="muted">上传数组 JSON：每项包含 dimension/agree_pole/text/is_active/source。</p>
+    <form method="post" action="/admin/import" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="field">
+        <input class="input" type="file" name="file" accept="application/json" required />
+      </div>
+      <button class="btn" type="submit">导入</button>
+    </form>
+  </div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}答题 · MBTI{% endblock %}
+{% block content %}
+  <div class="card">
+    <div class="progress">
+      <div class="badge">第 {{ position }} / {{ total }} 题{% if is_extra %} · 加测{% endif %}</div>
+      <div class="badge">5 级量表</div>
+    </div>
+    {% set pct = (position / total * 100) | round(0, 'floor') %}
+    <div class="progress-track" aria-hidden="true">
+      <div class="progress-fill" style="width: {{ pct }}%"></div>
+    </div>
+
+    <h2>{{ question.text }}</h2>
+
+    <form method="post" action="/test">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <input type="hidden" name="position" value="{{ position }}" />
+      <input type="hidden" name="question_id" value="{{ question.id }}" />
+
+      <div class="scale">
+        {% set labels = {1: "非常不同意", 2: "不同意", 3: "一般", 4: "同意", 5: "非常同意"} %}
+        {% for v in [1,2,3,4,5] %}
+          <label class="option">
+            <input type="radio" name="value" value="{{ v }}" {% if picked_value == v %}checked{% endif %} required />
+            <span>{{ labels[v] }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="divider"></div>
+      <div class="row">
+        <button class="btn" type="submit" name="nav" value="prev" {% if position <= 1 %}disabled{% endif %}>上一题</button>
+        <button class="btn primary" type="submit" name="nav" value="next">下一题</button>
+        <button class="btn danger" type="submit" name="nav" value="exit">保存并退出</button>
+      </div>
+    </form>
+  </div>
+
+{% endblock %}

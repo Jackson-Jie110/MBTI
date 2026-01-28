@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{% if mode=='new' %}新增题目{% else %}编辑题目{% endif %} · MBTI{% endblock %}
+{% block content %}
+  <div class="card">
+    <h1>{% if mode=='new' %}新增题目{% else %}编辑题目 #{{ question.id }}{% endif %}</h1>
+
+    <form method="post" action="{% if mode=='new' %}/admin/questions/new{% else %}/admin/questions/{{ question.id }}{% endif %}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+      <div class="field">
+        <label>维度</label>
+        <select name="dimension" required>
+          {% set dim = question.dimension if question else '' %}
+          <option value="EI" {% if dim=='EI' %}selected{% endif %}>EI</option>
+          <option value="SN" {% if dim=='SN' %}selected{% endif %}>SN</option>
+          <option value="TF" {% if dim=='TF' %}selected{% endif %}>TF</option>
+          <option value="JP" {% if dim=='JP' %}selected{% endif %}>JP</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>同意倾向（agree_pole）</label>
+        <input class="input" name="agree_pole" value="{{ question.agree_pole if question else '' }}" placeholder="E/I/S/N/T/F/J/P" required />
+      </div>
+
+      <div class="field">
+        <label>题目文本</label>
+        <textarea class="input" name="text" rows="4" required>{{ question.text if question else '' }}</textarea>
+      </div>
+
+      <div class="field">
+        <label>来源</label>
+        <input class="input" name="source" value="{{ question.source if question else 'ai' }}" />
+      </div>
+
+      <div class="field">
+        <label>
+          <input type="checkbox" name="is_active" value="1" {% if question and question.is_active %}checked{% endif %} />
+          启用
+        </label>
+      </div>
+
+      <div class="row">
+        <button class="btn primary" type="submit">保存</button>
+        <a class="btn" href="/admin/questions">返回列表</a>
+      </div>
+    </form>
+
+    {% if mode=='edit' %}
+      <div class="divider"></div>
+      <form method="post" action="/admin/questions/{{ question.id }}/toggle" class="row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button class="btn danger" type="submit">{% if question.is_active %}停用{% else %}启用{% endif %}</button>
+      </form>
+    {% endif %}
+  </div>
+{% endblock %}
+
