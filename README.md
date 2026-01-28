@@ -1,30 +1,36 @@
-# MBTI 在线测试（FastAPI + SQLite/Postgres）
+# MBTI 在线测试（FastAPI）
 
-功能概览：
-- 三种模式：20 / 40 / 60 题（按四个维度均衡抽题）
-- 5 级量表，一题一页，支持上一题/下一题/保存退出
-- 维度接近边界（差距 <10%）自动加测，最多 +10 题
-- 匿名分享结果链接（有效期在提交时选择）
-- 不提供跨设备续测（仅支持同一浏览器内继续答题）
-- 管理后台（/admin）：题库维护、导入/导出 JSON（已加登录保护；未配置账号时仅本机可访问）
+一个轻量的 MBTI 在线测试网站：用户选择题量模式（20/40/60 题），系统从题库中按四个维度均衡抽题，支持上一题/下一题/保存退出（同一浏览器继续），完成后生成「类型 + 四维百分比 + 完整报告」，并可生成匿名分享链接。
 
-## 快速开始
+## 功能
+- 三种模式：20 / 40 / 60 题（EI / SN / TF / JP 均衡抽题）
+- 5 级量表：一题一页，支持上一题/下一题/保存并退出
+- 自动加测：维度接近边界（差距 <10%）最多额外 +10 题
+- 报告输出：仅展示「类型 + 四维百分比 + 完整报告」（不展示逐题明细）
+- 结果分享：生成匿名分享链接（有效期在提交时选择）
+- 管理后台：`/admin` 维护题库（新增/编辑/启用停用/导入导出 JSON）
+- 不提供跨设备续测：仅支持同一浏览器内继续答题（cookie 会话）
 
+## 技术栈
+- 后端：FastAPI
+- 模板：Jinja2（SSR 服务端渲染）
+- ORM：SQLAlchemy 2.x
+- 数据库：本地开发 SQLite；线上部署推荐 Postgres
+- 测试：pytest + httpx TestClient
+
+## 本地运行（Windows / PowerShell）
 在项目根目录执行：
-
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
 ```
 
-初始化题库（写入 `mbti.db`）：
-
+初始化题库（写入本地 `mbti.db`，可选；应用也会在库为空时自动初始化）：
 ```powershell
 .\.venv\Scripts\python scripts\seed_questions.py
 ```
 
 启动服务：
-
 ```powershell
 .\.venv\Scripts\uvicorn app.main:app --reload
 ```
@@ -33,40 +39,37 @@ python -m venv .venv
 - 首页：`http://127.0.0.1:8000/`
 - 管理后台：`http://127.0.0.1:8000/admin`
 
+## 管理后台（/admin）
+- 若配置了 `MBTI_ADMIN_USERNAME` / `MBTI_ADMIN_PASSWORD`：访问 `/admin` 需要登录
+- 若未配置：为方便本地开发，管理后台仅允许本机访问（线上等同于“无法访问”，请务必配置账号）
+
 ## 环境变量
-
-- `MBTI_DATABASE_URL`
+- `MBTI_DATABASE_URL`（推荐线上配置）
   - 默认：`sqlite:///./mbti.db`
-  - 示例：`sqlite:///D:/data/mbti.db`
-  - 也支持使用平台默认的 `DATABASE_URL`
+  - 线上建议：Postgres 连接串（`postgres://...` 或 `postgresql://...` 均可）
+  - 也支持平台默认的 `DATABASE_URL`
 - `MBTI_APP_SECRET`
-  - 用于对 `test_token / share_token / admin_session` 做签名/哈希匹配。
-  - 建议在部署时设置为固定的随机长字符串；变更该值会导致已有分享链接/登录态失效。
+  - 用于分享链接/登录态的签名与哈希匹配
+  - 建议线上设置为固定的随机长字符串；变更会导致已有分享链接、已登录会话失效
 - `MBTI_ADMIN_USERNAME` / `MBTI_ADMIN_PASSWORD`
-  - 配置后，访问 `/admin` 需要登录
-  - 未配置时，仅允许本机访问管理后台（用于本地开发）
+  - 管理后台登录账号密码
 
-## 部署到 Render（推荐）
+## 部署到 Vercel（GitHub + 自定义域名）
+> 详细步骤见：`docs/plans/2026-01-28-vercel-deploy-plan.md`
 
-方式 A：使用蓝图（推荐）
-1) 把仓库推到 GitHub/GitLab
-2) Render 新建 Blueprint，选择仓库（会读取 `render.yaml`）
-3) 在 Render 控制台填写环境变量：`MBTI_ADMIN_USERNAME`、`MBTI_ADMIN_PASSWORD`
-4) 首次打开网站或 `/admin/questions` 会自动初始化数据库与题库
-
-方式 B：手动创建 Web Service
-1) 新建 Web Service（Python）
-2) Build Command：`pip install -r requirements.txt`
-3) Start Command：`uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`
-4) 新建 Render Postgres，并把连接串写入 `MBTI_DATABASE_URL`（或使用平台默认的 `DATABASE_URL`）
-5) 设置 `MBTI_APP_SECRET`、`MBTI_ADMIN_USERNAME`、`MBTI_ADMIN_PASSWORD`
+1) 推送到 GitHub 后，在 Vercel 创建项目：`Add New...` → `Project` → Import 你的仓库 → Deploy
+2) 创建数据库（推荐 Vercel Postgres）：项目 → `Storage` → `Create` → `Postgres`
+3) 在 Vercel 项目环境变量（Production）中设置：
+   - `MBTI_DATABASE_URL`：Postgres 连接串
+   - `MBTI_APP_SECRET`：随机长字符串
+   - `MBTI_ADMIN_USERNAME` / `MBTI_ADMIN_PASSWORD`
+4) Redeploy 后验证：访问 `/`、完成一次测试、生成分享链接、登录 `/admin`
+5) 绑定自定义域名：项目 → `Settings` → `Domains` 添加域名，并按页面提示配置 DNS；建议设置一个 Primary Domain 并把别名域 301 到主域，避免 cookie 分裂影响“继续答题”。
 
 ## 测试
-
 ```powershell
 .\.venv\Scripts\pytest -q
 ```
 
 ## 免责声明
-
 本测试仅用于自我了解与娱乐参考，不构成专业心理评估或诊断。
