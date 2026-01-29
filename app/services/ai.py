@@ -11,73 +11,67 @@ def _sse_data(text: str) -> str:
     return f"data: <span>{safe}</span>\n\n"
 
 
-def _missing_env_message() -> str | None:
-    api_key = os.getenv("MBTI_AI_API_KEY")
-    if not api_key:
-        return "AI 服务未配置：缺少环境变量 MBTI_AI_API_KEY。"
-    return None
+def _oob_inner_html(target_id: str, inner_html: str) -> str:
+    return f"data: <div id=\"{html.escape(target_id)}\" hx-swap-oob=\"innerHTML\">{inner_html}</div>\n\n"
+
+
+def _retry_ms(ms: int) -> str:
+    return f"retry: {int(ms)}\n\n"
 
 
 async def generate_report_stream(user_type: str, insights: list[str]) -> AsyncIterator[str]:
-    missing = _missing_env_message()
-    if missing:
-        print(missing)
-        yield _sse_data(missing)
-        return
-
-    base_url = os.getenv("MBTI_AI_BASE_URL") or None
-    api_key = os.getenv("MBTI_AI_API_KEY")
-    model = os.getenv("MBTI_AI_MODEL", "gpt-3.5-turbo")
+    yield _oob_inner_html("ai-content", "<div class='muted'>✨ 正在连接 AI 咨询师...</div>")
 
     try:
+        base_url = os.getenv("MBTI_AI_BASE_URL")
+        api_key = os.getenv("MBTI_AI_API_KEY")
+        model = os.getenv("MBTI_AI_MODEL", "gpt-3.5-turbo")
+
+        if not base_url or not api_key:
+            raise ValueError("Vercel 环境变量未配置 (MBTI_AI_BASE_URL 或 MBTI_AI_API_KEY)")
+
         from openai import AsyncOpenAI
-    except Exception as e:  # pragma: no cover
-        msg = f"AI 依赖不可用：{type(e).__name__}"
-        print(msg)
-        yield _sse_data(msg)
-        return
 
-    client = AsyncOpenAI(
-        api_key=api_key,
-        base_url=base_url,
-        timeout=30.0,
-        max_retries=1,
-    )
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-    insights_text = "\n".join(f"- {x}" for x in (insights or [])) or "-（暂无）"
-    prompt = (
-        "你是一位温暖、专业、有洞察力的心理咨询师。\n"
-        f"来访者的 MBTI 类型是：{user_type}。\n"
-        "以下是基于答题行为生成的动态洞察（可能不完整）：\n"
-        f"{insights_text}\n\n"
-        "请输出一段约 300 字的性格整合建议，要求：\n"
-        "1) 先共情，再给出可执行建议；\n"
-        "2) 避免贴标签式断言，强调情境与可成长；\n"
-        "3) 用中文输出。\n"
-    )
+        insight_text = "\n".join([f"- {i}" for i in (insights or [])])
+        system_prompt = (
+            "你是一位专业的 MBTI 心理咨询师。请根据用户的类型和作答行为，给出一段温暖、有洞察力的性格分析与建议（300字以内）。"
+            "请直接输出内容，不要带 Markdown 标题。"
+        )
+        user_prompt = f"用户类型：{user_type}\n\n关键行为洞察：\n{insight_text}\n\n请分析用户的性格矛盾点或独特优势。"
 
-    yield _sse_data("正在生成 AI 深度分析…\n")
+        current_text = ""
+        yield _oob_inner_html("ai-content", "<div class='muted'>正在生成 AI 深度分析…</div>")
 
-    try:
         stream = await client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "你是一位专业心理咨询师。"},
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
-            temperature=0.7,
             stream=True,
+            timeout=20.0,
         )
-        async for chunk in stream:
-            delta = ""
-            try:
-                delta = chunk.choices[0].delta.content or ""
-            except Exception:
-                delta = ""
-            if delta:
-                yield _sse_data(delta)
-    except Exception as e:
-        msg = f"\n（AI 暂时不可用：{type(e).__name__}）"
-        print(msg)
-        yield _sse_data(msg)
 
+        async for chunk in stream:
+            text = ""
+            try:
+                text = chunk.choices[0].delta.content or ""
+            except Exception:
+                text = ""
+            if not text:
+                continue
+
+            current_text += text
+            safe_text = html.escape(current_text).replace("\n", "<br/>")
+            yield _oob_inner_html("ai-content", safe_text)
+    except Exception as e:
+        error_msg = f"⚠️ 分析服务暂时不可用: {str(e)}"
+        print(error_msg)
+        yield _oob_inner_html("ai-content", f"<div class='muted btn danger'>{html.escape(error_msg)}</div>")
+        yield _retry_ms(86_400_000)
+        return
+
+    # 正常结束：把重连间隔拉长，避免 HTMX/EventSource 反复重连触发重复生成
+    yield _retry_ms(86_400_000)

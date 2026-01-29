@@ -447,7 +447,7 @@ def result_page(request: Request, share_token: str, db: Session = Depends(get_db
 
 
 @router.get("/result/ai_stream/{share_token}")
-async def result_ai_stream(share_token: str, db: Session = Depends(get_db)):
+async def ai_stream(request: Request, share_token: str, db: Session = Depends(get_db)):
     secret = _app_secret()
     token_hash = hash_token(share_token, secret=secret)
     test_row = (
@@ -457,10 +457,18 @@ async def result_ai_stream(share_token: str, db: Session = Depends(get_db)):
         .one_or_none()
     )
     if not test_row or test_row.status != "completed" or not test_row.result_json:
-        raise HTTPException(status_code=404, detail="结果不存在")
+        async def _missing():
+            yield 'data: <div id="ai-content" hx-swap-oob="innerHTML"><div class="muted">⚠️ 结果不存在或已失效</div></div>\n\n'
+            yield "retry: 86400000\n\n"
+
+        return StreamingResponse(_missing(), media_type="text/event-stream")
 
     if test_row.share_expires_at and datetime.now(timezone.utc) > _as_utc(test_row.share_expires_at):
-        raise HTTPException(status_code=404, detail="结果已过期")
+        async def _expired():
+            yield 'data: <div id="ai-content" hx-swap-oob="innerHTML"><div class="muted">⚠️ 结果已过期</div></div>\n\n'
+            yield "retry: 86400000\n\n"
+
+        return StreamingResponse(_expired(), media_type="text/event-stream")
 
     result = dict(test_row.result_json)
     type_code = result.get("type") or test_row.result_type
@@ -475,8 +483,4 @@ async def result_ai_stream(share_token: str, db: Session = Depends(get_db)):
     )
     insights = list(report.get("insights") or [])
 
-    async def _gen():
-        async for chunk in ai.generate_report_stream(str(type_code), insights):
-            yield chunk
-
-    return StreamingResponse(_gen(), media_type="text/event-stream")
+    return StreamingResponse(ai.generate_report_stream(str(type_code), insights), media_type="text/event-stream")
