@@ -41,33 +41,38 @@
     </div>
   {% endif %}
 
-  <div id="ai-container" class="bg-white p-6 rounded-lg shadow-sm border border-gray-100 min-h-[200px]">
+  <div id="ai-container" class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 min-h-[160px] relative transition-all duration-300">
       
-      <div id="ai-loading" class="flex items-center space-x-2 text-gray-400 animate-pulse">
-          <svg style="width: 20px; height: 20px;" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+      <h3 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
+          <span class="mr-2"></span> AI 深度性格侧写
+      </h3>
+  
+      <div class="ai-loading flex flex-col items-center justify-center py-8 space-y-3 text-gray-400">
+          <svg width="20" height="20" style="width: 20px; height: 20px; min-width: 20px;" class="animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          <span class="text-sm">正在连接 AI 咨询师...</span>
+          <span class="text-sm font-medium animate-pulse">正在连接 AI 咨询师...</span>
       </div>
   
-      <div id="ai-content" class="prose prose-slate max-w-none text-gray-700 leading-relaxed hidden"></div>
+      <div class="ai-content prose prose-slate prose-sm max-w-none text-gray-700 leading-relaxed hidden"></div>
   
       <script>
           (function() {
-              console.log(" [Native] 尝试启动原生 EventSource...");
-              
-              const contentDiv = document.getElementById('ai-content');
-              const loadingDiv = document.getElementById('ai-loading');
+              const container = document.currentScript.closest('#ai-container');
+              const loadingEl = container.querySelector('.ai-loading');
+              const contentEl = container.querySelector('.ai-content');
               const streamUrl = "/result/ai_stream/{{ share_token }}";
               
+              console.log(" [Scoped] AI 组件初始化...");
+  
               const es = new EventSource(streamUrl);
               let fullText = "";
   
               es.onmessage = function(event) {
-                  if (loadingDiv && loadingDiv.style.display !== 'none') {
-                      loadingDiv.style.display = 'none';
-                      contentDiv.classList.remove('hidden');
+                  if (loadingEl && loadingEl.style.display !== 'none') {
+                      loadingEl.style.display = 'none';
+                      contentEl.classList.remove('hidden');
                   }
   
                   try {
@@ -77,18 +82,18 @@
                       fullText += chunk;
   
                       if (typeof marked !== 'undefined') {
-                          contentDiv.innerHTML = marked.parse(fullText);
+                          contentEl.innerHTML = marked.parse(fullText);
                       } else {
-                          contentDiv.innerText = fullText;
+                          contentEl.innerText = fullText;
                       }
   
                   } catch (e) {
-                      console.warn("⚠️ JSON 解析忽略:", event.data);
+                      // 忽略非 JSON 数据
                   }
               };
   
-              es.onerror = function(err) {
-                  console.log(" [Native] 连接结束或中断");
+              es.onerror = function() {
+                  console.log(" 流式传输结束");
                   es.close();
               };
           })();
