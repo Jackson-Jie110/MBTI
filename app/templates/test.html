@@ -30,9 +30,9 @@
 
       <div class="divider"></div>
       <div class="row">
-        <button class="btn" type="submit" name="nav" value="prev" preload {% if position <= 1 %}disabled{% endif %}>上一题</button>
+        <button class="btn" type="submit" name="nav" value="prev" formnovalidate preload {% if position <= 1 %}disabled{% endif %}>上一题</button>
         <button class="btn primary" type="submit" name="nav" value="next" preload>下一题</button>
-        <button class="btn danger" type="submit" name="nav" value="exit">保存并退出</button>
+        <button class="btn danger" type="submit" name="nav" value="exit" formnovalidate>保存并退出</button>
       </div>
     </form>
   </div>

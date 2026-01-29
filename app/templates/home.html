@@ -12,13 +12,15 @@
       </div>
     {% endif %}
 
-    {% if has_in_progress %}
+    {% set test_in_progress = has_in_progress %}
+
+    {% if test_in_progress %}
       <div class="alert">
         <div class="row">
-          <a class="btn primary" href="/test">继续上次测试</a>
-          <a class="btn" href="#start-form">开始新的测试</a>
+          <a class="btn primary" href="/test">继续上次的测试</a>
+          <button class="btn" type="submit" form="start-form">开始新的测试</button>
         </div>
-        <p class="muted">提示：继续测试会回到上次进度；你也可以开始一套新的题。</p>
+        <p class="muted">提示：继续测试会回到上次进度；开始新测试会覆盖旧存档。</p>
       </div>
       <div class="divider"></div>
     {% endif %}
@@ -55,7 +57,9 @@
           <option value="permanent">永久</option>
         </select>
       </div>
-      <button class="btn primary" type="submit">开始测试</button>
+      {% if not test_in_progress %}
+        <button class="btn primary" type="submit">开始测试</button>
+      {% endif %}
     </form>
   </div>
 {% endblock %}
