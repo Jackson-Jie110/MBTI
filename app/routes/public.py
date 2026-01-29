@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import os
+import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request, Query
@@ -448,36 +449,42 @@ def result_page(request: Request, share_token: str, db: Session = Depends(get_db
 
 @router.get("/result/ai_stream/{share_token}")
 async def ai_stream(request: Request, share_token: str, db: Session = Depends(get_db)):
-    async def _error_stream(message: str):
-        yield f"data: {message}\n\n"
+    async def event_generator():
+        try:
+            secret = _app_secret()
+            token_hash = hash_token(share_token, secret=secret)
 
-    try:
-        secret = _app_secret()
-        token_hash = hash_token(share_token, secret=secret)
+            test_row = (
+                db.query(Test)
+                .options(joinedload(Test.answers))
+                .filter(Test.share_token_hash == token_hash)
+                .one_or_none()
+            )
 
-        # 预加载 answers 以便后续分析（即使暂时不用，也保持结构正确）
-        test_row = (
-            db.query(Test)
-            .options(joinedload(Test.answers))
-            .filter(Test.share_token_hash == token_hash)
-            .one_or_none()
-        )
-    except Exception as e:
-        return StreamingResponse(
-            _error_stream(f"⚠️ 服务暂时不可用：{type(e).__name__}"),
-            media_type="text/event-stream",
-        )
+            if not test_row or not test_row.result_json:
+                yield "data: ⚠️ 未找到测试记录，请检查链接是否正确。\n\n"
+                return
 
-    if not test_row or not test_row.result_json:
-        return StreamingResponse(
-            _error_stream("⚠️ 无法找到测试记录，请刷新重试。"),
-            media_type="text/event-stream",
-        )
+            result = dict(test_row.result_json)
+            type_code = result.get("type", "Unknown")
+            insights: list[str] = []
 
-    result = dict(test_row.result_json)
-    type_code = result.get("type", "Unknown")
+            async for chunk in ai.generate_report_stream(type_code, insights):
+                yield chunk
+        except Exception as e:
+            debug_trace = os.getenv("MBTI_DEBUG_SSE_TRACE", "").strip() in ("1", "true", "True", "yes", "YES")
+            error_msg = f"服务端异常: {str(e)}"
+            yield f"data: <div class='text-red-600 font-bold mb-2'>{error_msg}</div>\n\n"
+            if debug_trace:
+                stack_trace = traceback.format_exc()
+                stack_trace = stack_trace.replace("\n", "<br/>").replace(" ", "&nbsp;")
+                if len(stack_trace) > 6000:
+                    stack_trace = stack_trace[:6000] + "<br/>...(truncated)"
+                yield (
+                    "data: <div class='text-gray-500 text-xs font-mono bg-gray-100 p-2 rounded'>"
+                    f"{stack_trace}"
+                    "</div>\n\n"
+                )
+            yield "retry: 86400000\n\n"
 
-    # 简化洞察：先保证 AI 连通性，避免数据处理导致 500
-    insights: list[str] = []
-
-    return StreamingResponse(ai.generate_report_stream(type_code, insights), media_type="text/event-stream")
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
