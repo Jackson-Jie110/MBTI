@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import os
 import traceback
 from pathlib import Path
@@ -14,7 +15,6 @@ from sqlalchemy.orm import Session, joinedload
 from app.db import get_db
 from app.models import Answer, Question, Test, TestItem
 from app.seeding import seed_questions_if_empty
-from app.services import ai
 from app.services.reporting import build_report_context
 from app.services.selection import select_balanced
 from app.services.scoring import is_near_boundary, score_all
@@ -451,23 +451,42 @@ def result_page(request: Request, share_token: str, db: Session = Depends(get_db
 async def ai_stream(request: Request, share_token: str, db: Session = Depends(get_db)):
     async def event_generator():
         try:
-            secret = _app_secret()
-            token_hash = hash_token(share_token, secret=secret)
+            yield "data: ✨ 连接已建立，正在准备分析...\n\n"
+
+            def local_app_secret() -> str:
+                return os.getenv("MBTI_APP_SECRET", "dev-secret-change-me")
+
+            def local_hash_token(token: str, secret: str) -> str:
+                digest = hashlib.sha256()
+                digest.update(secret.encode("utf-8"))
+                digest.update(token.encode("utf-8"))
+                return digest.hexdigest()
+
+            secret = local_app_secret()
+            token_hash = local_hash_token(share_token, secret)
 
             test_row = (
                 db.query(Test)
                 .options(joinedload(Test.answers))
                 .filter(Test.share_token_hash == token_hash)
-                .one_or_none()
+                .first()
             )
-
-            if not test_row or not test_row.result_json:
-                yield "data: ⚠️ 未找到测试记录，请检查链接是否正确。\n\n"
+            if not test_row:
+                yield "data: ⚠️ 错误: 找不到该测试记录 (Invalid Token)\n\n"
                 return
 
-            result = dict(test_row.result_json)
+            result = test_row.result_json if test_row.result_json else {}
             type_code = result.get("type", "Unknown")
             insights: list[str] = []
+
+            try:
+                from app.services import ai  # 延迟导入，避免模块级 ImportError
+            except Exception as e:
+                yield f"data: ❌ 系统错误: AI 模块导入失败 ({type(e).__name__})\n\n"
+                return
+
+            if not os.getenv("MBTI_AI_API_KEY"):
+                yield "data: ⚠️ 警告: 环境变量 MBTI_AI_API_KEY 未配置，分析可能失败。\n\n"
 
             async for chunk in ai.generate_report_stream(type_code, insights):
                 yield chunk
