@@ -41,47 +41,58 @@
     </div>
   {% endif %}
 
-  <div id="ai-container" 
-       class="prose prose-slate max-w-none text-gray-700 leading-relaxed bg-white p-6 rounded-lg shadow-sm border border-gray-100"
-       hx-ext="sse" 
-       sse-connect="/result/ai_stream/{{ share_token }}"
-       hx-on:sse-message="
-          const loadingEl = this.querySelector('.animate-pulse');
-          if (loadingEl) loadingEl.remove();
-
-          try {
-              // console.log('收到 SSE 数据:', event.detail.data);
-              let content = '';
-
-              try {
-                  content = JSON.parse(event.detail.data);
-              } catch (e) {
-                  console.warn('非 JSON 数据，尝试直接使用:', event.detail.data);
-                  content = event.detail.data;
-              }
-
-              if (!this.fullText) this.fullText = '';
-              this.fullText += content;
-
-              if (typeof marked !== 'undefined') {
-                  this.innerHTML = marked.parse(this.fullText);
-              } else {
-                  console.warn('Marked.js 未加载，降级显示纯文本');
-                  this.innerHTML = this.fullText.replace(/\\n/g, '<br/>');
-              }
-          } catch (globalErr) {
-              console.error('渲染严重错误:', globalErr);
-          }
-       ">
-    
-    <div class="flex items-center space-x-2 text-gray-400 animate-pulse">
-        <svg style="width: 20px; height: 20px;" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <span class="text-sm">正在连接 AI 咨询师...</span>
-    </div>
-
+  <div id="ai-container" class="bg-white p-6 rounded-lg shadow-sm border border-gray-100 min-h-[200px]">
+      
+      <div id="ai-loading" class="flex items-center space-x-2 text-gray-400 animate-pulse">
+          <svg style="width: 20px; height: 20px;" class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span class="text-sm">正在连接 AI 咨询师...</span>
+      </div>
+  
+      <div id="ai-content" class="prose prose-slate max-w-none text-gray-700 leading-relaxed hidden"></div>
+  
+      <script>
+          (function() {
+              console.log(" [Native] 尝试启动原生 EventSource...");
+              
+              const contentDiv = document.getElementById('ai-content');
+              const loadingDiv = document.getElementById('ai-loading');
+              const streamUrl = "/result/ai_stream/{{ share_token }}";
+              
+              const es = new EventSource(streamUrl);
+              let fullText = "";
+  
+              es.onmessage = function(event) {
+                  if (loadingDiv && loadingDiv.style.display !== 'none') {
+                      loadingDiv.style.display = 'none';
+                      contentDiv.classList.remove('hidden');
+                  }
+  
+                  try {
+                      if (event.data.startsWith('retry:')) return;
+  
+                      const chunk = JSON.parse(event.data);
+                      fullText += chunk;
+  
+                      if (typeof marked !== 'undefined') {
+                          contentDiv.innerHTML = marked.parse(fullText);
+                      } else {
+                          contentDiv.innerText = fullText;
+                      }
+  
+                  } catch (e) {
+                      console.warn("⚠️ JSON 解析忽略:", event.data);
+                  }
+              };
+  
+              es.onerror = function(err) {
+                  console.log(" [Native] 连接结束或中断");
+                  es.close();
+              };
+          })();
+      </script>
   </div>
 
   <div class="card">
