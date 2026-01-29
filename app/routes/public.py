@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import html
 import hashlib
+import json
 import os
 import traceback
 from pathlib import Path
@@ -457,79 +458,112 @@ def result_page(request: Request, share_token: str, db: Session = Depends(get_db
 async def ai_stream(request: Request, share_token: str, db: Session = Depends(get_db)):
     async def event_generator():
         client = None
-        try:
-            yield "data: ✨ 正在连接 AI 大脑...\n\n"
 
-            def local_app_secret() -> str:
+        # 1) 防重连：断开后等待 20 秒再重连（避免刷屏/死循环）
+        yield "retry: 20000\n\n"
+        yield "data:  [阶段1] 正在握手...\n\n"
+
+        try:
+            # --- 内部定义辅助函数 ---
+            def local_app_secret():
                 return os.getenv("MBTI_APP_SECRET", "dev-secret-change-me")
 
-            def local_hash_token(token: str, secret: str) -> str:
+            def local_hash_token(t, s):
                 digest = hashlib.sha256()
-                digest.update(secret.encode("utf-8"))
-                digest.update(token.encode("utf-8"))
+                digest.update(str(s).encode("utf-8"))
+                digest.update(str(t).encode("utf-8"))
                 return digest.hexdigest()
 
+            # --- 验证 Token ---
+            yield "data:  [阶段2] 验证身份...\n\n"
             secret = local_app_secret()
             token_hash = local_hash_token(share_token, secret)
-
             test_row = db.query(Test).filter(Test.share_token_hash == token_hash).first()
+
             if not test_row:
-                yield "data: ⚠️ 无法找到测试记录\n\n"
+                yield "data:  错误: 无效的测试链接\n\n"
                 return
 
             result = test_row.result_json or {}
             type_code = result.get("type", "Unknown")
 
-            base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.openai.com/v1")
+            # --- 读取配置 ---
+            yield "data:  [阶段3] 读取配置...\n\n"
+            base_url = os.getenv("MBTI_AI_BASE_URL") or "https://api.openai.com/v1"
             api_key = os.getenv("MBTI_AI_API_KEY")
             model = os.getenv("MBTI_AI_MODEL", "gpt-3.5-turbo")
 
             if not api_key:
-                yield "data: ⚠️ 错误: 未配置 MBTI_AI_API_KEY\n\n"
+                yield "data:  错误: 环境变量未配置 (MBTI_AI_API_KEY)\n\n"
                 return
 
             if AsyncOpenAI is None:
-                yield "data: ❌ 系统错误: OpenAI SDK 不可用\n\n"
+                yield "data:  ❌ 系统错误: OpenAI SDK 不可用\n\n"
                 return
 
+            # --- 初始化客户端 ---
+            yield "data:  [阶段3.1] 初始化客户端...\n\n"
             client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-            system_prompt = "你是一位专业的 MBTI 咨询师。请根据用户类型给出一段300字以内的深度解析，语气温暖，分段输出。"
-            user_prompt = f"我的 MBTI 类型是：{type_code}。请分析我的核心优势和潜在盲点。"
+            # --- 发起请求 ---
+            yield f"data:  [阶段4] 正在呼叫 AI ({html.escape(str(model))})...\n\n"
 
-            stream = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                stream=True,
-                timeout=30.0,
-            )
+            try:
+                stream = await client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "你是一位MBTI专家。请简短分析用户的性格优势（100字以内）。"},
+                        {"role": "user", "content": f"我的类型是 {type_code}。"},
+                    ],
+                    stream=True,
+                    timeout=15.0,
+                )
+                yield "data:  [阶段5] AI 已接通，准备接收数据...\n\n"
+            except Exception as api_err:
+                yield f"data:  API 连接失败: {html.escape(str(api_err))}\n\n"
+                return
 
-            # 安全遍历数据流（关键修复点）
+            # --- 处理数据流 ---
+            chunk_count = 0
             async for chunk in stream:
-                # 必须保留这一行判断：避免 content 为 None 时崩溃
-                if chunk.choices and chunk.choices[0].delta.content:
-                    text = chunk.choices[0].delta.content
+                try:
+                    chunk_count += 1
+
+                    choices = getattr(chunk, "choices", None)
+                    if not choices or len(choices) == 0:
+                        continue
+
+                    first = choices[0]
+                    delta = getattr(first, "delta", None)
+                    if not delta:
+                        continue
+
+                    content = getattr(delta, "content", None)
+                    if not content:
+                        continue
+
+                    text = str(content)
                     safe_text = html.escape(text).replace("\n", "<br/>")
                     yield f"data: {safe_text}\n\n"
+                except Exception as loop_err:
+                    print(f"Chunk Error: {loop_err}")
+                    continue
+
+            if chunk_count == 0:
+                yield "data: ⚠️ 警告: AI 返回了空响应 (Stream is empty)\n\n"
 
         except Exception as e:
             err_msg = str(e)
-            yield f"data: <span class='text-red-500'>❌ 分析中断: {html.escape(err_msg)}</span>\n\n"
-            print(f"AI Stream Error: {traceback.format_exc()}")
+            stack = traceback.format_exc().replace("\n", " ")
+            yield f"data: <span class='text-red-500'> 严重崩溃: {html.escape(err_msg)}</span>\n\n"
+            print(f"System Error: {stack}")
         finally:
             if client:
                 try:
                     await client.close()
                 except Exception:
                     pass
+            yield "data: [分析结束]\n\n"
 
-    headers = {
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-    }
-
+    headers = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
