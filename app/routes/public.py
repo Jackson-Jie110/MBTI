@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import html
 import hashlib
 import os
 import traceback
@@ -19,6 +20,11 @@ from app.services.reporting import build_report_context
 from app.services.selection import select_balanced
 from app.services.scoring import is_near_boundary, score_all
 from app.services.tokens import expiry_from_choice, hash_token, new_url_token
+
+try:
+    from openai import AsyncOpenAI
+except Exception:  # pragma: no cover
+    AsyncOpenAI = None
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
@@ -450,8 +456,9 @@ def result_page(request: Request, share_token: str, db: Session = Depends(get_db
 @router.get("/result/ai_stream/{share_token}")
 async def ai_stream(request: Request, share_token: str, db: Session = Depends(get_db)):
     async def event_generator():
+        client = None
         try:
-            yield "data: ✨ 连接已建立，正在准备分析...\n\n"
+            yield "data: ✨ 正在连接 AI 大脑...\n\n"
 
             def local_app_secret() -> str:
                 return os.getenv("MBTI_APP_SECRET", "dev-secret-change-me")
@@ -465,45 +472,64 @@ async def ai_stream(request: Request, share_token: str, db: Session = Depends(ge
             secret = local_app_secret()
             token_hash = local_hash_token(share_token, secret)
 
-            test_row = (
-                db.query(Test)
-                .options(joinedload(Test.answers))
-                .filter(Test.share_token_hash == token_hash)
-                .first()
-            )
+            test_row = db.query(Test).filter(Test.share_token_hash == token_hash).first()
             if not test_row:
-                yield "data: ⚠️ 错误: 找不到该测试记录 (Invalid Token)\n\n"
+                yield "data: ⚠️ 无法找到测试记录\n\n"
                 return
 
-            result = test_row.result_json if test_row.result_json else {}
+            result = test_row.result_json or {}
             type_code = result.get("type", "Unknown")
-            insights: list[str] = []
 
-            try:
-                from app.services import ai  # 延迟导入，避免模块级 ImportError
-            except Exception as e:
-                yield f"data: ❌ 系统错误: AI 模块导入失败 ({type(e).__name__})\n\n"
+            base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.openai.com/v1")
+            api_key = os.getenv("MBTI_AI_API_KEY")
+            model = os.getenv("MBTI_AI_MODEL", "gpt-3.5-turbo")
+
+            if not api_key:
+                yield "data: ⚠️ 错误: 未配置 MBTI_AI_API_KEY\n\n"
                 return
 
-            if not os.getenv("MBTI_AI_API_KEY"):
-                yield "data: ⚠️ 警告: 环境变量 MBTI_AI_API_KEY 未配置，分析可能失败。\n\n"
+            if AsyncOpenAI is None:
+                yield "data: ❌ 系统错误: OpenAI SDK 不可用\n\n"
+                return
 
-            async for chunk in ai.generate_report_stream(type_code, insights):
-                yield chunk
+            client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+            system_prompt = "你是一位专业的 MBTI 咨询师。请根据用户类型给出一段300字以内的深度解析，语气温暖，分段输出。"
+            user_prompt = f"我的 MBTI 类型是：{type_code}。请分析我的核心优势和潜在盲点。"
+
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                stream=True,
+                timeout=30.0,
+            )
+
+            # 安全遍历数据流（关键修复点）
+            async for chunk in stream:
+                # 必须保留这一行判断：避免 content 为 None 时崩溃
+                if chunk.choices and chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    safe_text = html.escape(text).replace("\n", "<br/>")
+                    yield f"data: {safe_text}\n\n"
+
         except Exception as e:
-            debug_trace = os.getenv("MBTI_DEBUG_SSE_TRACE", "").strip() in ("1", "true", "True", "yes", "YES")
-            error_msg = f"服务端异常: {str(e)}"
-            yield f"data: <div class='text-red-600 font-bold mb-2'>{error_msg}</div>\n\n"
-            if debug_trace:
-                stack_trace = traceback.format_exc()
-                stack_trace = stack_trace.replace("\n", "<br/>").replace(" ", "&nbsp;")
-                if len(stack_trace) > 6000:
-                    stack_trace = stack_trace[:6000] + "<br/>...(truncated)"
-                yield (
-                    "data: <div class='text-gray-500 text-xs font-mono bg-gray-100 p-2 rounded'>"
-                    f"{stack_trace}"
-                    "</div>\n\n"
-                )
-            yield "retry: 86400000\n\n"
+            err_msg = str(e)
+            yield f"data: <span class='text-red-500'>❌ 分析中断: {html.escape(err_msg)}</span>\n\n"
+            print(f"AI Stream Error: {traceback.format_exc()}")
+        finally:
+            if client:
+                try:
+                    await client.close()
+                except Exception:
+                    pass
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
