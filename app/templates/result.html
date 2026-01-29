@@ -50,6 +50,7 @@
       hx-ext="sse"
       sse-connect="/result/ai_stream/{{ share_token }}"
       sse-swap="message"
+      hx-on:sse-error="this.innerHTML = '<p class=\\'text-red-500\\'>⚠️ 连接断开，请刷新页面重试。</p>'"
       hx-swap="beforeend"
     >
       <p class="muted">正在连接 AI 咨询师...</p>
