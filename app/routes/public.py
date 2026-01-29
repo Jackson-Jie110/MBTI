@@ -505,52 +505,35 @@ async def ai_stream(request: Request, share_token: str, db: Session = Depends(ge
             yield "data:  [阶段3.1] 初始化客户端...\n\n"
             client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
-            # --- 发起请求 ---
-            yield f"data:  [阶段4] 正在呼叫 AI ({html.escape(str(model))})...\n\n"
+            # --- 发起请求（非流式）---
+            yield f"data: ⏳ 正在等待 AI ({html.escape(str(model))}) 生成完整报告...\n\n"
 
             try:
-                stream = await client.chat.completions.create(
+                response = await client.chat.completions.create(
                     model=model,
                     messages=[
                         {"role": "system", "content": "你是一位MBTI专家。请简短分析用户的性格优势（100字以内）。"},
                         {"role": "user", "content": f"我的类型是 {type_code}。"},
                     ],
-                    stream=True,
-                    timeout=15.0,
+                    stream=False,
+                    timeout=30.0,
                 )
-                yield "data:  [阶段5] AI 已接通，准备接收数据...\n\n"
             except Exception as api_err:
-                yield f"data:  API 连接失败: {html.escape(str(api_err))}\n\n"
+                yield f"data:  API 请求失败: {html.escape(str(api_err))}\n\n"
                 return
 
-            # --- 处理数据流 ---
-            chunk_count = 0
-            async for chunk in stream:
-                try:
-                    chunk_count += 1
+            raw_content = ""
+            try:
+                if response.choices and response.choices[0].message and response.choices[0].message.content:
+                    raw_content = response.choices[0].message.content
+            except Exception:
+                raw_content = ""
 
-                    choices = getattr(chunk, "choices", None)
-                    if not choices or len(choices) == 0:
-                        continue
-
-                    first = choices[0]
-                    delta = getattr(first, "delta", None)
-                    if not delta:
-                        continue
-
-                    content = getattr(delta, "content", None)
-                    if not content:
-                        continue
-
-                    text = str(content)
-                    safe_text = html.escape(text).replace("\n", "<br/>")
-                    yield f"data: {safe_text}\n\n"
-                except Exception as loop_err:
-                    print(f"Chunk Error: {loop_err}")
-                    continue
-
-            if chunk_count == 0:
-                yield "data: ⚠️ 警告: AI 返回了空响应 (Stream is empty)\n\n"
+            if raw_content:
+                safe_content = html.escape(str(raw_content)).replace("\n", "<br/>")
+                yield f"data: {safe_content}\n\n"
+            else:
+                yield "data: ⚠️ 警告: AI 返回内容为空\n\n"
 
         except Exception as e:
             err_msg = str(e)
