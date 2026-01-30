@@ -1,161 +1,171 @@
 {% extends "base.html" %}
 {% block title %}结果 · MBTI{% endblock %}
 {% block content %}
-  <div class="card">
-    <h1>你的类型：{{ type_code }}</h1>
-    <p class="muted">仅展示类型、四维百分比与完整报告（不展示每题明细）。</p>
-    <div class="field">
-      <label>分享链接</label>
-      <div class="row compact">
-        <input class="input grow" id="share-url" value="{{ share_url }}" readonly />
-        <button class="btn" type="button" data-copy-target="#share-url">复制</button>
+  <div class="result-page">
+    <div class="card result-hero">
+      <div class="result-hero__header">
+        <h1 class="result-hero__type">
+          你的类型：<span class="result-hero__typecode">{{ type_code }}</span>
+        </h1>
+        <p class="muted result-hero__subtitle">{{ report.title }}</p>
+        <p class="muted result-hero__desc">仅展示类型、四维百分比与完整报告（不展示每题明细）。</p>
       </div>
-    </div>
-  </div>
 
-  <div class="card">
-    <h2>四维百分比</h2>
-    <div class="bars">
-      {% for d in dimensions %}
-        <div class="bar">
-          <div class="bar-head">
-            <span>{{ d.dimension }}：{{ d.first_pole }} {{ d.first_percent }}% / {{ d.second_pole }} {{ d.second_percent }}%</span>
-            <span class="muted">差距 {{ d.gap_percent }}%</span>
-          </div>
-          <div class="bar-track">
-            <div class="bar-fill" style="width: {{ d.first_percent }}%"></div>
-          </div>
+      <div class="field result-hero__share">
+        <label>分享链接</label>
+        <div class="row compact">
+          <input class="input grow" id="share-url" value="{{ share_url }}" readonly />
+          <button class="btn" type="button" data-copy-target="#share-url">复制</button>
         </div>
-      {% endfor %}
-    </div>
-  </div>
-
-  {% if report.insights %}
-    <div class="card contrast">
-      <h2>动态洞察（Layer 2）</h2>
-      <ul>
-        {% for i in report.insights %}
-          <li>{{ i }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-  {% endif %}
-
-  <div id="ai-container" 
-       style="background-color: rgba(255, 255, 255, 0.95); box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.1); border: 1px solid rgba(226, 232, 240, 0.8); margin: 2.5rem 0;"
-       class="my-10 bg-white/95 backdrop-blur-sm p-6 md:p-8 rounded-2xl border border-indigo-50 min-h-[160px] relative transition-all duration-300">
-      
-      <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
-          <span class="mr-2 text-2xl"></span> 
-          <span style="background: linear-gradient(to right, #4f46e5, #9333ea); -webkit-background-clip: text; color: transparent; display: inline-block;" 
-                class="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
-              AI 深度性格侧写
-          </span>
-      </h3>
-  
-      <div class="ai-loading flex flex-col items-center justify-center py-8 space-y-4 text-gray-400">
-          <svg width="24" height="24" style="width: 24px; height: 24px; min-width: 24px;" class="animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <span class="text-sm font-medium animate-pulse tracking-wide">正在连接 AI 咨询师...</span>
       </div>
-  
-      <div class="ai-content prose prose-slate prose-lg max-w-none text-gray-700 leading-relaxed hidden"></div>
-  
-      <script>
-          (function() {
-              const container = document.currentScript.closest('#ai-container');
-              const loadingEl = container.querySelector('.ai-loading');
-              const contentEl = container.querySelector('.ai-content');
-              const streamUrl = "/result/ai_stream/{{ share_token }}";
-              
-              console.log(" [Scoped] AI 组件初始化...");
-  
-              const es = new EventSource(streamUrl);
-              let fullText = "";
-  
-              es.onmessage = function(event) {
-                  if (loadingEl && loadingEl.style.display !== 'none') {
-                      loadingEl.style.display = 'none';
-                      contentEl.classList.remove('hidden');
-                  }
-  
-                  try {
-                      if (event.data.startsWith('retry:')) return;
-  
-                      let chunk = JSON.parse(event.data);
-                      
-                      // 过滤脏数据
-                      chunk = chunk.replace(/TAGS_SHORT_READ_WARNING\s+\w+/g, "");
-  
-                      fullText += chunk;
-  
-                      if (typeof marked !== 'undefined') {
-                          contentEl.innerHTML = marked.parse(fullText);
-                      } else {
-                          contentEl.innerText = fullText;
-                      }
-  
-                  } catch (e) {
-                      // ignore
-                  }
-              };
-  
-              es.onerror = function() {
-                  es.close();
-              };
-          })();
-      </script>
-  </div>
+    </div>
 
-  <div class="card">
-    <h2>完整分析：{{ report.type_code }}（{{ report.title }}）</h2>
-    <p>{{ report.summary }}</p>
+    <div class="card">
+      <h2>四维百分比</h2>
+      <div class="bars">
+        {% for d in dimensions %}
+          <div class="bar">
+            <div class="bar-head">
+              <span>{{ d.dimension }}：{{ d.first_pole }} {{ d.first_percent }}% / {{ d.second_pole }} {{ d.second_percent }}%</span>
+              <span class="muted">差距 {{ d.gap_percent }}%</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width: {{ d.first_percent }}%"></div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
 
-    {% if report.boundary_notes %}
-      <div class="alert">
-        <strong>边界提示：</strong>
-        <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
-          {% for n in report.boundary_notes %}
-            <li>{{ n }}</li>
+    {% if report.insights %}
+      <div class="card contrast">
+        <h2>动态洞察（Layer 2）</h2>
+        <ul class="result-list">
+          {% for i in report.insights %}
+            <li>{{ i }}</li>
           {% endfor %}
         </ul>
       </div>
-      <div class="divider"></div>
     {% endif %}
 
-    <h3>优势</h3>
-    <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
-      {% for s in report.strengths %}
-        <li>{{ s }}</li>
-      {% endfor %}
-    </ul>
+    <div id="ai-container" class="card ai-card">
+      <div class="ai-card__head">
+        <h2 class="ai-card__title">
+          <span class="ai-card__title-gradient">AI 深度性格侧写</span>
+        </h2>
+        <p class="muted ai-card__subtitle">基于你的类型，给出更偏“心灵侧写”的文字解读。</p>
+      </div>
 
-    <h3>盲点</h3>
-    <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
-      {% for s in report.blind_spots %}
-        <li>{{ s }}</li>
-      {% endfor %}
-    </ul>
+      <div class="ai-loading">
+        <svg width="24" height="24" style="width: 24px; height: 24px; min-width: 24px;" class="ai-loading__spinner" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span class="ai-loading__text">正在连接 AI 咨询师...</span>
+      </div>
 
-    <h3>建议</h3>
-    <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
-      {% for s in report.advice %}
-        <li>{{ s }}</li>
-      {% endfor %}
-    </ul>
+      <div class="ai-content is-hidden"></div>
 
-    <h3>适合方向</h3>
-    <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
-      {% for s in report.suitable %}
-        <li>{{ s }}</li>
-      {% endfor %}
-    </ul>
+      <script>
+        (function () {
+          const container = document.currentScript.closest("#ai-container");
+          const loadingEl = container.querySelector(".ai-loading");
+          const contentEl = container.querySelector(".ai-content");
+          const streamUrl = "/result/ai_stream/{{ share_token }}";
 
-    <p class="muted">{{ report.disclaimer }}</p>
-    <div class="row">
-      <a class="btn" href="/">再测一次</a>
+          const es = new EventSource(streamUrl);
+          let fullText = "";
+
+          es.onmessage = function (event) {
+            if (loadingEl && loadingEl.style.display !== "none") {
+              loadingEl.style.display = "none";
+              contentEl.classList.remove("is-hidden");
+            }
+
+            try {
+              if (event.data.startsWith("retry:")) return;
+
+              let chunk = JSON.parse(event.data);
+              chunk = chunk.replace(/TAGS_SHORT_READ_WARNING\s+\w+/g, "");
+              fullText += chunk;
+
+              if (typeof marked !== "undefined") {
+                contentEl.innerHTML = marked.parse(fullText);
+              } else {
+                contentEl.innerText = fullText;
+              }
+            } catch (e) {
+              // ignore
+            }
+          };
+
+          es.onerror = function () {
+            es.close();
+          };
+        })();
+      </script>
+    </div>
+
+    <div class="card result-full">
+      <div class="result-full__head">
+        <h2>完整分析</h2>
+        <p class="muted result-full__meta">{{ report.type_code }}（{{ report.title }}）</p>
+        <p class="muted result-full__summary">{{ report.summary }}</p>
+      </div>
+
+      <div class="result-grid">
+        {% if report.boundary_notes %}
+          <section class="result-subcard result-subcard--note">
+            <h3>边界提示</h3>
+            <ul class="result-list">
+              {% for n in report.boundary_notes %}
+                <li>{{ n }}</li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+
+        <section class="result-subcard">
+          <h3>优势</h3>
+          <ul class="result-list">
+            {% for s in report.strengths %}
+              <li>{{ s }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+
+        <section class="result-subcard">
+          <h3>盲点</h3>
+          <ul class="result-list">
+            {% for s in report.blind_spots %}
+              <li>{{ s }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+
+        <section class="result-subcard">
+          <h3>建议</h3>
+          <ul class="result-list">
+            {% for s in report.advice %}
+              <li>{{ s }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+
+        <section class="result-subcard">
+          <h3>适合方向</h3>
+          <ul class="result-list">
+            {% for s in report.suitable %}
+              <li>{{ s }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+      </div>
+
+      <p class="muted">{{ report.disclaimer }}</p>
+      <div class="row">
+        <a class="btn" href="/">再测一次</a>
+      </div>
     </div>
   </div>
 {% endblock %}
