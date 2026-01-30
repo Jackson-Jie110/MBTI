@@ -13,6 +13,18 @@
       href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;500;600;700&family=Varela+Round&display=swap"
     />
     <link rel="stylesheet" href="/static/app.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Nunito Sans", "sans-serif"],
+            },
+          },
+        },
+      };
+    </script>
     <meta name="htmx-config" content='{"historyCacheSize": 0, "refreshOnHistoryMiss": false}'>
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/htmx.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.10/dist/ext/sse.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
