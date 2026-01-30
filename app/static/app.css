@@ -185,7 +185,7 @@ p {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.3px;
-  background-image: linear-gradient(90deg, var(--text-strong), var(--cta));
+  background-image: linear-gradient(90deg, var(--primary), var(--cta));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
