@@ -42,8 +42,8 @@
   {% endif %}
 
   <div id="ai-container" 
-       style="background-color: rgba(255, 255, 255, 0.95); box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.1); border: 1px solid rgba(226, 232, 240, 0.8);"
-       class="bg-white/95 backdrop-blur-sm p-6 md:p-8 rounded-2xl border border-indigo-50 min-h-[160px] relative transition-all duration-300">
+       style="background-color: rgba(255, 255, 255, 0.95); box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.1); border: 1px solid rgba(226, 232, 240, 0.8); margin: 2.5rem 0;"
+       class="my-10 bg-white/95 backdrop-blur-sm p-6 md:p-8 rounded-2xl border border-indigo-50 min-h-[160px] relative transition-all duration-300">
       
       <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
           <span class="mr-2 text-2xl"></span> 
@@ -116,7 +116,7 @@
     {% if report.boundary_notes %}
       <div class="alert">
         <strong>边界提示：</strong>
-        <ul>
+        <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
           {% for n in report.boundary_notes %}
             <li>{{ n }}</li>
           {% endfor %}
@@ -126,28 +126,28 @@
     {% endif %}
 
     <h3>优势</h3>
-    <ul>
+    <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
       {% for s in report.strengths %}
         <li>{{ s }}</li>
       {% endfor %}
     </ul>
 
     <h3>盲点</h3>
-    <ul>
+    <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
       {% for s in report.blind_spots %}
         <li>{{ s }}</li>
       {% endfor %}
     </ul>
 
     <h3>建议</h3>
-    <ul>
+    <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
       {% for s in report.advice %}
         <li>{{ s }}</li>
       {% endfor %}
     </ul>
 
     <h3>适合方向</h3>
-    <ul>
+    <ul class="list-disc list-inside space-y-1" style="list-style-type: disc; padding-left: 1.25rem;">
       {% for s in report.suitable %}
         <li>{{ s }}</li>
       {% endfor %}
