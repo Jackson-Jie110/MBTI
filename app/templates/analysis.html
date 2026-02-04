@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}全息维度分析 · MBTI{% endblock %}
+
+{% block head %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+  <div class="result-page">
+    <div class="card result-hero">
+      <div class="result-hero__header">
+        <h1 class="result-hero__type">
+          <span class="result-hero__type-label">全息维度分析</span>
+        </h1>
+        <p class="muted result-hero__subtitle">你的 RPG 角色属性面板</p>
+        <p class="muted result-hero__desc">基于 MBTI 四维百分比，映射为 6 项能力维度（0-100）。</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">
+        <span class="card-title__text">六维潜能雷达图</span>
+      </h2>
+
+      <div style="height: 340px; position: relative;">
+        <canvas id="radar-canvas" aria-label="六维潜能雷达图" role="img"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <a class="btn" href="/">再测一次</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const data = {{ radar_data_json | safe }};
+      const labels = ["创造力", "执行力", "逻辑力", "共情力", "适应力", "社交力"];
+
+      const canvas = document.getElementById("radar-canvas");
+      if (!canvas || typeof Chart === "undefined") return;
+
+      new Chart(canvas, {
+        type: "radar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "潜能值",
+              data,
+              backgroundColor: "rgba(99, 102, 241, 0.2)",
+              borderColor: "rgba(99, 102, 241, 0.9)",
+              pointBackgroundColor: "rgba(99, 102, 241, 1)",
+              pointBorderColor: "rgba(255, 255, 255, 0.9)",
+              pointHoverBackgroundColor: "rgba(99, 102, 241, 1)",
+              pointHoverBorderColor: "rgba(255, 255, 255, 1)",
+              borderWidth: 2,
+              pointRadius: 4,
+              pointBorderWidth: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.label}: ${ctx.raw}`,
+              },
+            },
+          },
+          scales: {
+            r: {
+              min: 0,
+              max: 100,
+              ticks: { display: false },
+              grid: { display: false },
+              angleLines: { display: true, color: "rgba(15, 23, 42, 0.12)" },
+              pointLabels: { color: "rgba(15, 23, 42, 0.82)", font: { size: 12, weight: "600" } },
+            },
+          },
+        },
+      });
+    })();
+  </script>
+{% endblock %}

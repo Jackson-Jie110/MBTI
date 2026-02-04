@@ -191,7 +191,11 @@
 
       <p class="muted">{{ report.disclaimer }}</p>
       <div class="row">
-        <a class="btn" href="/">再测一次</a>
+        <form action="/analysis" method="post">
+          <input type="hidden" name="type" value="{{ type_code }}" />
+          <input type="hidden" name="dimensions" value='{{ dimensions_json | e }}' />
+          <button class="btn" type="submit">解锁更多分析</button>
+        </form>
       </div>
     </div>
   </div>

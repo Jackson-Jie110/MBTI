@@ -594,11 +594,98 @@ def result_page(request: Request, share_token: str, db: Session = Depends(get_db
         {
             "type_code": type_code,
             "dimensions": [dims.get(d) for d in ["EI", "SN", "TF", "JP"] if dims.get(d)],
+            "dimensions_json": json.dumps(dims, ensure_ascii=False),
             "report": report,
             "share_url": str(request.base_url)[:-1] + f"/result/{share_token}",
             "share_token": share_token,
         },
     )
+
+
+def _rpg_radar_from_dimensions(dims: dict[str, object]) -> list[int]:
+    def clamp(v: float) -> int:
+        return int(max(0, min(100, round(v))))
+
+    def pole_percent(dim_key: str, pole: str) -> int:
+        raw = dims.get(dim_key)
+        if not isinstance(raw, dict):
+            return 50
+        first_pole = str(raw.get("first_pole") or "")
+        second_pole = str(raw.get("second_pole") or "")
+        first_percent = raw.get("first_percent")
+        second_percent = raw.get("second_percent")
+        try:
+            fp = int(first_percent) if first_percent is not None else 50
+            sp = int(second_percent) if second_percent is not None else 50
+        except Exception:
+            fp, sp = 50, 50
+
+        if first_pole == pole:
+            return max(0, min(100, fp))
+        if second_pole == pole:
+            return max(0, min(100, sp))
+        return 50
+
+    e = pole_percent("EI", "E")
+    s = pole_percent("SN", "S")
+    n = pole_percent("SN", "N")
+    t = pole_percent("TF", "T")
+    f = pole_percent("TF", "F")
+    j = pole_percent("JP", "J")
+    p = pole_percent("JP", "P")
+
+    creativity = clamp(n * 0.8 + p * 0.2)
+    execution = clamp(j * 0.8 + s * 0.2)
+    logic = clamp(t)
+    empathy = clamp(f)
+    adaptability = clamp(p)
+    social = clamp(e)
+
+    return [creativity, execution, logic, empathy, adaptability, social]
+
+
+def _analysis_template(request: Request, type_code: str, dimensions_json: str) -> HTMLResponse:
+    try:
+        dims = json.loads(dimensions_json)
+        if not isinstance(dims, dict):
+            dims = {}
+    except Exception:
+        dims = {}
+
+    radar_data = _rpg_radar_from_dimensions(dims) if dims else [50, 50, 50, 50, 50, 50]
+
+    return templates.TemplateResponse(
+        request,
+        "analysis.html",
+        {
+            "type_code": type_code,
+            "radar_data_json": json.dumps(radar_data, ensure_ascii=False),
+        },
+    )
+
+
+@router.get("/analysis", response_class=HTMLResponse)
+def analysis_page_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    type_code: str = Query("", alias="type"),
+    dimensions: str | None = Query(None),
+):
+    if not type_code or not dimensions:
+        return RedirectResponse(url="/", status_code=303)
+    return _analysis_template(request, type_code, dimensions)
+
+
+@router.post("/analysis", response_class=HTMLResponse)
+def analysis_page_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    type_code: str = Form("", alias="type"),
+    dimensions: str = Form(""),
+):
+    if not type_code or not dimensions:
+        return RedirectResponse(url="/", status_code=303)
+    return _analysis_template(request, type_code, dimensions)
 
 
 @router.get("/result/ai_stream/{share_token}")
