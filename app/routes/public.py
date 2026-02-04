@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request, Query
 from fastapi import HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
 
@@ -177,31 +177,40 @@ def start(
 def test_page(request: Request, db: Session = Depends(get_db), pos: int | None = None):
     test_row = _get_test_from_cookie(request, db)
 
-    items = (
-        db.query(TestItem)
+    rows = (
+        db.query(TestItem, Question)
+        .join(Question, Question.id == TestItem.question_id)
         .filter(TestItem.test_id == test_row.id)
         .order_by(TestItem.position.asc())
         .all()
     )
-    if not items:
+    if not rows:
         raise HTTPException(status_code=400, detail="该测试没有题目")
 
+    items = [it for it, _q in rows]
     answers = db.query(Answer).filter(Answer.test_id == test_row.id).all()
-    answer_map = {a.question_id: a.value for a in answers}
+    answer_map = {int(a.question_id): int(a.value) for a in answers}
 
-    total = len(items)
-    if pos is None:
-        next_pos = None
-        for it in items:
-            if it.question_id not in answer_map:
-                next_pos = it.position
-                break
-        pos = next_pos or items[-1].position
+    questions_data = []
+    for it, q in rows:
+        questions_data.append(
+            {
+                "id": int(q.id),
+                "text": q.text,
+                "dimension": q.dimension,
+                "agree_pole": q.agree_pole,
+                "position": int(it.position),
+                "is_extra": bool(it.is_extra),
+            }
+        )
 
-    pos = max(1, min(total, int(pos)))
-    item = items[pos - 1]
-    question = db.query(Question).filter(Question.id == item.question_id).one()
-    picked_value = answer_map.get(question.id)
+    initial_index = 0
+    for idx, it in enumerate(items):
+        if int(it.question_id) not in answer_map:
+            initial_index = idx
+            break
+    else:
+        initial_index = max(0, len(items) - 1)
 
     csrf, should_set = _csrf_token(request)
 
@@ -209,17 +218,102 @@ def test_page(request: Request, db: Session = Depends(get_db), pos: int | None =
         request,
         "test.html",
         {
-            "position": pos,
-            "total": total,
-            "question": question,
-            "picked_value": picked_value,
-            "is_extra": item.is_extra,
+            "questions_json": json.dumps(questions_data, ensure_ascii=False),
+            "answers_json": json.dumps(answer_map, ensure_ascii=False),
+            "initial_index": initial_index,
             "csrf_token": csrf,
         },
     )
     if should_set:
         response.set_cookie(CSRF_COOKIE, csrf, httponly=True, samesite="lax")
     return response
+
+
+@router.post("/test/answers")
+async def test_answers(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    csrf_token = payload.get("csrf_token")
+    if not isinstance(csrf_token, str):
+        raise HTTPException(status_code=400, detail="缺少 csrf_token")
+    _require_csrf(request, csrf_token)
+
+    test_row = _get_test_from_cookie(request, db)
+
+    intent = payload.get("intent") or "save"
+    raw_answers = payload.get("answers")
+    if raw_answers is None:
+        raise HTTPException(status_code=400, detail="缺少 answers")
+
+    item_ids = {
+        int(qid)
+        for (qid,) in db.query(TestItem.question_id).filter(TestItem.test_id == test_row.id).all()
+    }
+    if not item_ids:
+        raise HTTPException(status_code=400, detail="该测试没有题目")
+
+    to_upsert: list[tuple[int, int]] = []
+    if isinstance(raw_answers, dict):
+        for k, v in raw_answers.items():
+            try:
+                qid = int(k)
+                val = int(v)
+            except Exception:
+                continue
+            to_upsert.append((qid, val))
+    elif isinstance(raw_answers, list):
+        for it in raw_answers:
+            if not isinstance(it, dict):
+                continue
+            try:
+                qid = int(it.get("question_id"))
+                val = int(it.get("value"))
+            except Exception:
+                continue
+            to_upsert.append((qid, val))
+    else:
+        raise HTTPException(status_code=400, detail="answers 格式不合法")
+
+    now = datetime.now(timezone.utc)
+    existing = db.query(Answer).filter(Answer.test_id == test_row.id).all()
+    existing_map = {int(a.question_id): a for a in existing}
+
+    for qid, val in to_upsert:
+        if qid not in item_ids:
+            continue
+        if val < 1 or val > 5:
+            continue
+        row = existing_map.get(qid)
+        if row:
+            row.value = val
+            row.answered_at = now
+        else:
+            db.add(Answer(test_id=test_row.id, question_id=qid, value=val, answered_at=now))
+
+    db.commit()
+
+    if intent == "finish":
+        saved_ids = {
+            int(qid)
+            for (qid,) in db.query(Answer.question_id).filter(Answer.test_id == test_row.id).all()
+        }
+        missing = None
+        for pos_it in (
+            db.query(TestItem)
+            .filter(TestItem.test_id == test_row.id)
+            .order_by(TestItem.position.asc())
+            .all()
+        ):
+            if int(pos_it.question_id) not in saved_ids:
+                missing = int(pos_it.position)
+                break
+        if missing is not None:
+            return JSONResponse({"ok": True, "redirect": "/test", "missing_position": missing})
+        return JSONResponse({"ok": True, "redirect": "/finish"})
+
+    if intent == "exit":
+        return JSONResponse({"ok": True, "redirect": "/"})
+
+    return JSONResponse({"ok": True})
 
 
 @router.post("/test")
@@ -316,7 +410,7 @@ def finish_page(request: Request, db: Session = Depends(get_db)):
 
     missing = _first_missing_position(items, answer_map)
     if missing is not None:
-        return RedirectResponse(url=f"/test?pos={missing}", status_code=303)
+        return RedirectResponse(url="/test", status_code=303)
 
     scoring = score_all(
         [{"id": q.id, "dimension": q.dimension, "agree_pole": q.agree_pole} for q in questions],
@@ -344,7 +438,7 @@ def finish_page(request: Request, db: Session = Depends(get_db)):
                     new_pos = len(items) + 1
                     db.add(TestItem(test_id=test_row.id, position=new_pos, question_id=q.id, is_extra=True))
                     db.commit()
-                    return RedirectResponse(url=f"/test?pos={new_pos}", status_code=303)
+                    return RedirectResponse(url="/test", status_code=303)
 
     csrf, should_set = _csrf_token(request)
     response = templates.TemplateResponse(
@@ -375,7 +469,7 @@ def finish_submit(
     answer_map = _load_answers(db, test_row.id)
     missing = _first_missing_position(items, answer_map)
     if missing is not None:
-        return RedirectResponse(url=f"/test?pos={missing}", status_code=303)
+        return RedirectResponse(url="/test", status_code=303)
 
     scoring = score_all(
         [{"id": q.id, "dimension": q.dimension, "agree_pole": q.agree_pole} for q in questions],

@@ -1,40 +1,203 @@
 {% extends "base.html" %}
 {% block title %}答题 · MBTI{% endblock %}
 {% block content %}
-  <div class="card">
+  <div class="card" id="quiz-root">
     <div class="progress">
-      <div class="badge">第 {{ position }} / {{ total }} 题{% if is_extra %} · 加测{% endif %}</div>
-      <div class="badge">5 级量表</div>
+      <div class="badge" id="quiz-pos">第 1 / 1 题</div>
+      <div class="badge" id="quiz-mode">5 级量表</div>
     </div>
-    {% set pct = (position / total * 100) | round(0, 'floor') %}
     <div class="progress-track" aria-hidden="true">
-      <div class="progress-fill" style="width: {{ pct }}%"></div>
+      <div class="progress-fill" id="quiz-progress" style="width: 0%"></div>
     </div>
 
-    <h2>{{ question.text }}</h2>
+    <h2 id="quiz-question" style="min-height: 3.2em"></h2>
 
-    <form method="post" action="/test">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-      <input type="hidden" name="position" value="{{ position }}" />
-      <input type="hidden" name="question_id" value="{{ question.id }}" />
+    <div class="scale" id="quiz-scale" role="radiogroup" aria-label="选择你的同意程度"></div>
 
-      <div class="scale">
-        {% set labels = {1: "非常不同意", 2: "不同意", 3: "一般", 4: "同意", 5: "非常同意"} %}
-        {% for v in [1,2,3,4,5] %}
-          <label class="option">
-            <input type="radio" name="value" value="{{ v }}" {% if picked_value == v %}checked{% endif %} required />
-            <span>{{ labels[v] }}</span>
-          </label>
-        {% endfor %}
-      </div>
-
-      <div class="divider"></div>
-      <div class="row">
-        <button class="btn" type="submit" name="nav" value="prev" formnovalidate preload {% if position <= 1 %}disabled{% endif %}>上一题</button>
-        <button class="btn primary" type="submit" name="nav" value="next" preload>下一题</button>
-        <button class="btn danger" type="submit" name="nav" value="exit" formnovalidate>保存并退出</button>
-      </div>
-    </form>
+    <div class="divider"></div>
+    <div class="row">
+      <button class="btn" type="button" id="btn-prev">上一题</button>
+      <button class="btn primary" type="button" id="btn-next">下一题</button>
+      <button class="btn danger" type="button" id="btn-exit">保存并退出</button>
+    </div>
+    <p class="muted" id="quiz-hint" style="display:none"></p>
   </div>
 
+  <script>
+    const ALL_QUESTIONS = {{ questions_json | safe }};
+    const EXISTING_ANSWERS = {{ answers_json | safe }};
+    const CSRF_TOKEN = "{{ csrf_token }}";
+    let currentIndex = {{ initial_index | int }};
+
+    const LABELS = {
+      1: "非常不同意",
+      2: "不同意",
+      3: "一般",
+      4: "同意",
+      5: "非常同意",
+    };
+
+    const answersById = Object.assign({}, EXISTING_ANSWERS);
+
+    const root = document.getElementById("quiz-root");
+    const elPos = document.getElementById("quiz-pos");
+    const elProgress = document.getElementById("quiz-progress");
+    const elQuestion = document.getElementById("quiz-question");
+    const elScale = document.getElementById("quiz-scale");
+    const elHint = document.getElementById("quiz-hint");
+
+    const btnPrev = document.getElementById("btn-prev");
+    const btnNext = document.getElementById("btn-next");
+    const btnExit = document.getElementById("btn-exit");
+
+    function setHint(text) {
+      if (!text) {
+        elHint.style.display = "none";
+        elHint.textContent = "";
+        return;
+      }
+      elHint.style.display = "";
+      elHint.textContent = text;
+    }
+
+    function render() {
+      const total = ALL_QUESTIONS.length;
+      if (total === 0) {
+        elQuestion.textContent = "题库为空，请联系管理员。";
+        btnPrev.disabled = true;
+        btnNext.disabled = true;
+        btnExit.disabled = false;
+        return;
+      }
+
+      currentIndex = Math.max(0, Math.min(total - 1, currentIndex));
+      const q = ALL_QUESTIONS[currentIndex];
+
+      const posText = `第 ${currentIndex + 1} / ${total} 题${q.is_extra ? " · 加测" : ""}`;
+      elPos.textContent = posText;
+
+      const pct = Math.floor(((currentIndex + 1) / total) * 100);
+      elProgress.style.width = `${pct}%`;
+
+      elQuestion.textContent = q.text || "";
+      setHint("");
+
+      btnPrev.disabled = currentIndex <= 0;
+
+      // Rebuild scale
+      elScale.innerHTML = "";
+      const picked = answersById[String(q.id)] ?? answersById[q.id];
+
+      for (const v of [1, 2, 3, 4, 5]) {
+        const label = document.createElement("label");
+        label.className = "option";
+
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "value";
+        input.value = String(v);
+        input.checked = Number(picked) === v;
+
+        input.addEventListener("change", () => {
+          answersById[q.id] = v;
+          // auto next for zero-latency feel
+          if (currentIndex < total - 1) {
+            currentIndex += 1;
+            render();
+          } else {
+            submitFinish();
+          }
+        });
+
+        const span = document.createElement("span");
+        span.textContent = LABELS[v];
+
+        label.appendChild(input);
+        label.appendChild(span);
+        elScale.appendChild(label);
+      }
+    }
+
+    function requirePicked() {
+      const q = ALL_QUESTIONS[currentIndex];
+      const picked = answersById[String(q.id)] ?? answersById[q.id];
+      if (!picked) {
+        setHint("请选择一个选项后再继续。");
+        return false;
+      }
+      return true;
+    }
+
+    async function saveAll(intent) {
+      const answers = Object.entries(answersById).map(([qid, value]) => ({
+        question_id: Number(qid),
+        value: Number(value),
+      }));
+
+      const res = await fetch("/test/answers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          csrf_token: CSRF_TOKEN,
+          intent,
+          answers,
+        }),
+      });
+
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(`保存失败: ${res.status} ${t}`);
+      }
+
+      return await res.json();
+    }
+
+    async function submitFinish() {
+      btnPrev.disabled = true;
+      btnNext.disabled = true;
+      btnExit.disabled = true;
+      setHint("正在提交作答并生成结果...");
+      try {
+        const data = await saveAll("finish");
+        const redirect = data.redirect || "/finish";
+        window.location.href = redirect;
+      } catch (e) {
+        setHint(String(e));
+        btnExit.disabled = false;
+      }
+    }
+
+    btnPrev.addEventListener("click", () => {
+      if (currentIndex > 0) {
+        currentIndex -= 1;
+        render();
+      }
+    });
+
+    btnNext.addEventListener("click", () => {
+      if (!requirePicked()) return;
+      if (currentIndex < ALL_QUESTIONS.length - 1) {
+        currentIndex += 1;
+        render();
+      } else {
+        submitFinish();
+      }
+    });
+
+    btnExit.addEventListener("click", async () => {
+      btnPrev.disabled = true;
+      btnNext.disabled = true;
+      btnExit.disabled = true;
+      setHint("正在保存进度...");
+      try {
+        const data = await saveAll("exit");
+        window.location.href = data.redirect || "/";
+      } catch (e) {
+        setHint(String(e));
+        btnExit.disabled = false;
+      }
+    });
+
+    render();
+  </script>
 {% endblock %}
