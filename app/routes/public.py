@@ -573,7 +573,12 @@ async def ai_stream(request: Request, share_token: str, db: Session = Depends(ge
 
             secret = local_app_secret()
             token_hash = local_hash_token(share_token, secret)
-            test_row = db.query(Test).filter(Test.share_token_hash == token_hash).first()
+            test_row = (
+                db.query(Test)
+                .options(joinedload(Test.answers).joinedload(Answer.question))
+                .filter(Test.share_token_hash == token_hash)
+                .first()
+            )
             if not test_row:
                 yield "data: <span class='text-red-500'>⚠️ 链接已失效，无法获取测试记录。</span>\n\n"
                 return
@@ -583,7 +588,7 @@ async def ai_stream(request: Request, share_token: str, db: Session = Depends(ge
 
             base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.siliconflow.cn/v1")
             api_key = os.getenv("MBTI_AI_API_KEY")
-            model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3")
+            model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3.2")
 
             if not api_key:
                 yield "data: ⚠️ 系统未配置 AI API Key，请联系管理员。\n\n"
@@ -596,24 +601,107 @@ async def ai_stream(request: Request, share_token: str, db: Session = Depends(ge
             yield f"data: [阶段2] 准备请求 AI（{html.escape(str(model))}）...\n\n"
             client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
+            # --- 构建“全息画像”数据 ---
+            dims: dict[str, dict] = dict(result.get("dimensions") or {})
+            boundary_notes = list(result.get("boundary_notes") or [])
+
+            def _dimensions_str() -> str:
+                parts: list[str] = []
+                for dim in ["EI", "SN", "TF", "JP"]:
+                    info = dims.get(dim) or {}
+                    fp = info.get("first_percent")
+                    sp = info.get("second_percent")
+                    first = info.get("first_pole")
+                    second = info.get("second_pole")
+                    if first and second and fp is not None and sp is not None:
+                        parts.append(f"{first}:{int(fp)}% / {second}:{int(sp)}%")
+                return ", ".join(parts) if parts else "暂无维度百分比数据"
+
+            def _extremes_str() -> str:
+                items: list[str] = []
+                for idx, a in enumerate(list(getattr(test_row, "answers", []) or []), start=1):
+                    try:
+                        v = int(getattr(a, "value", 0))
+                    except Exception:
+                        continue
+                    if v not in (1, 5):
+                        continue
+                    q = getattr(a, "question", None)
+                    if not q:
+                        continue
+                    text = str(getattr(q, "text", "") or "").strip()
+                    dim = str(getattr(q, "dimension", "") or "").strip()
+                    agree = str(getattr(q, "agree_pole", "") or "").strip()
+                    if len(dim) == 2 and len(agree) == 1:
+                        opposite = dim[1] if dim[0] == agree else (dim[0] if dim[1] == agree else "?")
+                    else:
+                        opposite = "?"
+                    pole = agree if v == 5 else opposite
+                    snippet = text[:48] + ("…" if len(text) > 48 else "")
+                    items.append(f"{idx}. [{dim}/{pole}向] {v}分：{snippet}")
+                    if len(items) >= 6:
+                        break
+                return "；".join(items) if items else "未发现明显的极值作答（1分/5分）"
+
+            answers = list(getattr(test_row, "answers", []) or [])
+            insight_list = build_report_context(
+                type_code,
+                dims,
+                boundary_notes=boundary_notes,
+                answers=answers,
+            ).get("insights", [])
+            insight_list = [str(x).strip() for x in (insight_list or []) if str(x).strip()]
+
+            tags: list[str] = []
+            for dim, info in (dims or {}).items():
+                try:
+                    gap = int(info.get("gap_percent"))
+                except Exception:
+                    continue
+                if gap < 20:
+                    tags.append(f"{dim}均衡")
+                elif gap > 60:
+                    tags.append(f"{dim}极致")
+            if any(getattr(a, "value", None) == 5 for a in answers):
+                tags.append("立场坚定")
+            if any("尽管你整体偏向" in s for s in insight_list):
+                tags.append("反差发力")
+            tags = tags[:6]
+
+            dimensions_str = _dimensions_str()
+            extreme_traits = _extremes_str()
+            dynamic_insights = "；".join(insight_list[:3]) if insight_list else "暂无动态洞察"
+            dynamic_tags = "动态标签：" + (", ".join([f"[{t}]" for t in tags]) if tags else "[稳定作答]")
+
+            user_profile_context = f"""
+用户MBTI类型：{type_code}
+【维度数据】：{dimensions_str}
+【极值特质】：{extreme_traits}
+【行为标签】：{dynamic_tags}
+【动态洞察】：{dynamic_insights}
+请综合上述数据，忽略刻板印象，还原一个鲜活的人。
+""".strip()
+
+            # --- 提示词升级：方案 A「深渊凝视者」---
             system_prompt = f"""
-你是一位能够洞察灵魂的资深心理咨询师。用户是 {type_code} 类型。
+你是一位洞察人性幽暗与光辉的心理学大师，正在使用 DeepSeek-V3.2 模型进行深度侧写。
+{user_profile_context}
 
 【指令】
-1. 请严格按照下方给定的 Markdown 模版输出内容。
-2. **严禁**输出任何开场白（如“好的”、“这是您的分析”等），直接开始输出标题。
-3. **严禁**输出任何代码块符号（```），仅输出纯 Markdown 文本。
-4. 保持语气温暖、深邃、富有文学性。
+1. 你的语言要像手术刀一样精准，剥开用户的社会面具，直指内心深处的矛盾与渴望。
+2. 结合给出的维度数据和极值特质进行推理，不要只罗列优缺点。
+3. 严禁输出任何开场白，严禁使用代码块。
+4. 请严格按照下方 Markdown 模版输出。
 
 【输出模版】
-###  灵魂隐喻
-(在此处为该人格创造一个独特的视觉意象，如“沉默的守夜人”，并解释原因。约 100 字)
+### ️ 灵魂底色
+(用一个带有灰度色彩的意象，如“暴风雨中的灯塔”，描述该人格最底层的核心驱动力。约 100 字)
 
-###  别人眼中的你 vs. 真实的你
-(在此处揭示外界对该人格的误解，并温柔地道出其真实的善意与动机。约 150 字)
+###  镜像与阴影
+(指出用户常常欺骗自己的一点，以及外界误解最深的一点。用“世人皆以为...，殊不知...”的句式。约 150 字)
 
-###  给你的灵魂寄语
-(在此处写一段简短、充满力量的哲理性话语，关于如何与自己和解。约 80 字)
+###  给伤口的诗
+(针对该人格最容易受挫的软肋，写一段治愈且充满力量的短句。约 80 字)
 """.strip()
 
             user_prompt = f"我的 MBTI 类型是：{type_code}。请开始你的深度解读。"
