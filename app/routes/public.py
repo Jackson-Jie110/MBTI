@@ -188,6 +188,7 @@ def test_page(request: Request, db: Session = Depends(get_db), pos: int | None =
         raise HTTPException(status_code=400, detail="该测试没有题目")
 
     items = [it for it, _q in rows]
+    used_ids = {int(it.question_id) for it in items}
     answers = db.query(Answer).filter(Answer.test_id == test_row.id).all()
     answer_map = {int(a.question_id): int(a.value) for a in answers}
 
@@ -204,14 +205,14 @@ def test_page(request: Request, db: Session = Depends(get_db), pos: int | None =
             }
         )
 
-    # Tie-breaker questions pool (fallback to all active questions if no dedicated pool exists).
-    tie_rows = (
-        db.query(Question)
-        .filter(Question.is_active.is_(True), Question.source == "tie_breaker")
-        .all()
-    )
+    # Tie-breaker questions pool (preferred: source == "tie_breaker"; fallback: any unused active questions).
+    # Note: the current Question model doesn't have a `category` column; `source` acts as the tie-breaker marker.
+    tie_rows = db.query(Question).filter(Question.is_active.is_(True), Question.source == "tie_breaker").all()
     if not tie_rows:
-        tie_rows = db.query(Question).filter(Question.is_active.is_(True)).all()
+        q = db.query(Question).filter(Question.is_active.is_(True))
+        if used_ids:
+            q = q.filter(~Question.id.in_(used_ids))
+        tie_rows = q.all()
 
     dim_pair = {"EI": "E-I", "SN": "S-N", "TF": "T-F", "JP": "J-P"}
     tie_breakers: dict[str, list[dict[str, object]]] = {}
@@ -267,14 +268,18 @@ async def test_answers(request: Request, db: Session = Depends(get_db)):
     if raw_answers is None:
         raise HTTPException(status_code=400, detail="缺少 answers")
 
-    item_ids = {
-        int(qid)
-        for (qid,) in db.query(TestItem.question_id).filter(TestItem.test_id == test_row.id).all()
-    }
+    items = (
+        db.query(TestItem)
+        .filter(TestItem.test_id == test_row.id)
+        .order_by(TestItem.position.asc())
+        .all()
+    )
+    item_ids = {int(it.question_id) for it in items}
     if not item_ids:
         raise HTTPException(status_code=400, detail="该测试没有题目")
 
-    to_upsert: list[tuple[int, int]] = []
+    # De-duplicate answers by question_id; keep the last value.
+    to_upsert_map: dict[int, int] = {}
     if isinstance(raw_answers, dict):
         for k, v in raw_answers.items():
             try:
@@ -282,7 +287,7 @@ async def test_answers(request: Request, db: Session = Depends(get_db)):
                 val = int(v)
             except Exception:
                 continue
-            to_upsert.append((qid, val))
+            to_upsert_map[qid] = val
     elif isinstance(raw_answers, list):
         for it in raw_answers:
             if not isinstance(it, dict):
@@ -292,9 +297,56 @@ async def test_answers(request: Request, db: Session = Depends(get_db)):
                 val = int(it.get("value"))
             except Exception:
                 continue
-            to_upsert.append((qid, val))
+            to_upsert_map[qid] = val
     else:
         raise HTTPException(status_code=400, detail="answers 格式不合法")
+
+    to_upsert: list[tuple[int, int]] = list(to_upsert_map.items())
+
+    # Allow client-side scheduled extra (tie-breaker) questions:
+    # create TestItem rows for new question ids so server-side scoring includes them.
+    extra_qids = [qid for qid, _v in to_upsert if qid not in item_ids]
+    if extra_qids:
+        existing_extra = sum(1 for it in items if bool(getattr(it, "is_extra", False)))
+        remaining = max(0, int(test_row.extra_max) - int(existing_extra))
+        if remaining <= 0:
+            raise HTTPException(status_code=400, detail="加测题数量已达上限")
+
+        extra_qids = extra_qids[:remaining]
+        has_dedicated_tie_pool = (
+            db.query(Question.id)
+            .filter(Question.is_active.is_(True), Question.source == "tie_breaker")
+            .limit(1)
+            .scalar()
+            is not None
+        )
+
+        q_query = db.query(Question).filter(Question.id.in_(extra_qids), Question.is_active.is_(True))
+        if has_dedicated_tie_pool:
+            q_query = q_query.filter(Question.source == "tie_breaker")
+        q_rows = q_query.all()
+        q_by_id = {int(q.id): q for q in q_rows}
+
+        max_pos = int(items[-1].position) if items else 0
+        allowed_dims = {"EI", "SN", "TF", "JP"}
+        for qid in extra_qids:
+            q = q_by_id.get(int(qid))
+            if not q:
+                continue
+            if str(q.dimension) not in allowed_dims:
+                continue
+            max_pos += 1
+            db.add(TestItem(test_id=test_row.id, position=max_pos, question_id=int(qid), is_extra=True))
+        db.commit()
+
+        # refresh item ids after appending extras
+        items = (
+            db.query(TestItem)
+            .filter(TestItem.test_id == test_row.id)
+            .order_by(TestItem.position.asc())
+            .all()
+        )
+        item_ids = {int(it.question_id) for it in items}
 
     now = datetime.now(timezone.utc)
     existing = db.query(Answer).filter(Answer.test_id == test_row.id).all()
@@ -331,60 +383,6 @@ async def test_answers(request: Request, db: Session = Depends(get_db)):
                 break
         if missing is not None:
             return JSONResponse({"status": "incomplete", "redirect": "/test", "missing_position": missing})
-
-        # Detect tie-break need and append extra question on server side (client renders instantly from preloaded pool).
-        items, questions = _load_test_questions(db, test_row.id)
-        answer_map = _load_answers(db, test_row.id)
-        scoring = score_all(
-            [{"id": q.id, "dimension": q.dimension, "agree_pole": q.agree_pole} for q in questions],
-            answer_map,
-        )
-        dims = scoring["dimensions"]
-
-        extra_count = sum(1 for it in items if it.is_extra)
-        if extra_count < int(test_row.extra_max):
-            near = [
-                d
-                for d in ["EI", "SN", "TF", "JP"]
-                if is_near_boundary(int(dims[d]["first_percent"]), threshold_gap_percent=10)
-            ]
-            if near:
-                used_ids = {int(it.question_id) for it in items}
-                near_sorted = sorted(near, key=lambda d: int(dims[d]["gap_percent"]))
-                for dim in near_sorted:
-                    q = (
-                        db.query(Question)
-                        .filter(
-                            Question.is_active.is_(True),
-                            Question.dimension == dim,
-                            ~Question.id.in_(used_ids),
-                        )
-                        .first()
-                    )
-                    if not q:
-                        continue
-                    new_pos = len(items) + 1
-                    db.add(TestItem(test_id=test_row.id, position=new_pos, question_id=q.id, is_extra=True))
-                    db.commit()
-
-                    pair = f"{dim[0]}-{dim[1]}"
-                    return JSONResponse(
-                        {
-                            "status": "tie_break",
-                            "dimension_pair": pair,
-                            "questions": [
-                                {
-                                    "id": int(q.id),
-                                    "text": q.text,
-                                    "dimension": q.dimension,
-                                    "agree_pole": q.agree_pole,
-                                    "position": int(new_pos),
-                                    "is_extra": True,
-                                }
-                            ],
-                        }
-                    )
-
         return JSONResponse({"status": "complete", "redirect": "/finish"})
 
     if intent == "exit":
