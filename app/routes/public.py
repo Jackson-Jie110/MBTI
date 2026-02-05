@@ -1225,13 +1225,27 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
         except Exception as e:
             raise RuntimeError(f"AI 响应为空或结构异常: {e}") from e
 
+        # 1) Strip Markdown code fences if present (```json ... ```)
+        cleaned = (content or "").strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?[ \t]*\r?\n?", "", cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r"\r?\n?```$", "", cleaned).strip()
+
+        # 2) Parse JSON with strict=False to tolerate unescaped control chars (e.g., newlines)
+        extracted = _extract_json_object(cleaned) or cleaned
         try:
-            fun_data_obj = json.loads(content)
-        except Exception:
-            extracted = _extract_json_object(content)
-            if not extracted:
-                raise ValueError("AI 未返回可解析的 JSON 对象")
+            fun_data_obj = json.loads(extracted, strict=False)
+        except TypeError:
+            # Older/alternate JSON implementations may not support strict=
             fun_data_obj = json.loads(extracted)
+        except Exception:
+            extracted2 = _extract_json_object(content)
+            if not extracted2:
+                raise ValueError("AI 未返回可解析的 JSON 对象")
+            try:
+                fun_data_obj = json.loads(extracted2, strict=False)
+            except TypeError:
+                fun_data_obj = json.loads(extracted2)
 
         if not isinstance(fun_data_obj, dict):
             raise ValueError("AI JSON 顶层不是对象")
