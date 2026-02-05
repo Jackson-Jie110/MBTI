@@ -900,6 +900,16 @@ def get_fallback_data(error_msg: str) -> dict[str, object]:
                 "请检查 API Key 余额、网络连接、Base URL 或 JSON 格式约束。"
             ),
         },
+        "relationships": {
+            "soulmate": {"mbti": "????", "role": "未知", "desc": f"(系统) 生成失败：{safe_err}"},
+            "nemesis": {"mbti": "????", "role": "未知", "desc": f"(系统) 生成失败：{safe_err}"},
+        },
+        "character": {
+            "name": "未知",
+            "source": "未知",
+            "quote": "（系统）暂无台词",
+            "desc": f"(系统) 生成失败：{safe_err}",
+        },
     }
 
 
@@ -1109,7 +1119,11 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
 各维度分值: {json.dumps(letter_dims, ensure_ascii=False)}
 内心最冲突的维度: {conflict_pair[0]} (score: {val1}) vs {conflict_pair[1]} (score: {val2}) - 分值极度接近。
 
-请基于以上数据，生成“用户使用说明书”和“内心维度战争”分析。
+请基于以上数据，生成：
+1) “用户使用说明书”
+2) “内心维度战争”
+3) “命定羁绊”（最佳伴侣 soulmate + 最大天敌 nemesis）
+4) “灵魂投影”（最像的影视/动漫角色 character）
 必须严格输出纯 JSON 格式，无 Markdown：
 {{
     "manual": {{
@@ -1120,6 +1134,24 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
     "war": {{
         "title": "冲突维度的具象化比喻 (如：理性的暴君 vs 感性的诗人)",
         "description": "深度分析这种纠结带来的困扰与优势。"
+    }},
+    "relationships": {{
+        "soulmate": {{
+            "mbti": "XXXX",
+            "role": "角色称呼",
+            "desc": "一句话解释为什么你们是灵魂伴侣"
+        }},
+        "nemesis": {{
+            "mbti": "XXXX",
+            "role": "角色称呼",
+            "desc": "一句话解释为什么你们相爱相杀或互相看不顺眼"
+        }}
+    }},
+    "character": {{
+        "name": "角色名",
+        "source": "作品名",
+        "quote": "经典台词",
+        "desc": "简短分析用户与该角色的性格相似点"
     }}
 }}
 """.strip()
@@ -1172,14 +1204,28 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
 
         manual = fun_data_obj.get("manual")
         war = fun_data_obj.get("war")
+        relationships = fun_data_obj.get("relationships")
+        character = fun_data_obj.get("character")
         if not isinstance(manual, dict) or not isinstance(war, dict):
             raise ValueError("AI JSON 缺少 manual/war 对象")
+        if not isinstance(relationships, dict) or not isinstance(character, dict):
+            raise ValueError("AI JSON 缺少 relationships/character 对象")
         if not isinstance(manual.get("do_list"), list) or not isinstance(manual.get("dont_list"), list):
             raise ValueError("manual.do_list / manual.dont_list 必须是数组")
         if not isinstance(manual.get("recharge"), str) or not manual.get("recharge"):
             raise ValueError("manual.recharge 必须是非空字符串")
         if not isinstance(war.get("title"), str) or not isinstance(war.get("description"), str):
             raise ValueError("war.title / war.description 必须是字符串")
+        soulmate = relationships.get("soulmate") if isinstance(relationships, dict) else None
+        nemesis = relationships.get("nemesis") if isinstance(relationships, dict) else None
+        if not isinstance(soulmate, dict) or not isinstance(nemesis, dict):
+            raise ValueError("relationships.soulmate / relationships.nemesis 必须是对象")
+        if not isinstance(soulmate.get("mbti"), str) or not isinstance(soulmate.get("role"), str) or not isinstance(soulmate.get("desc"), str):
+            raise ValueError("relationships.soulmate 字段必须为字符串")
+        if not isinstance(nemesis.get("mbti"), str) or not isinstance(nemesis.get("role"), str) or not isinstance(nemesis.get("desc"), str):
+            raise ValueError("relationships.nemesis 字段必须为字符串")
+        if not isinstance(character.get("name"), str) or not isinstance(character.get("source"), str) or not isinstance(character.get("quote"), str) or not isinstance(character.get("desc"), str):
+            raise ValueError("character 字段必须为字符串")
 
         fun_data = fun_data_obj
     except Exception as e:
