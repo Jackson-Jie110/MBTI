@@ -1021,8 +1021,7 @@ def analysis_page_get(
         return RedirectResponse(url="/", status_code=303)
 
     core = _analysis_core(type_code, dimensions)
-    base = str(request.url_for("analysis_async_content"))
-    analysis_stream_url = base
+    analysis_card_url = str(request.url_for("analysis_card_content"))
 
     return templates.TemplateResponse(
         request,
@@ -1031,11 +1030,8 @@ def analysis_page_get(
             "type_code": type_code,
             "mbti_type": type_code,
             "radar_data_json": json.dumps(core["radar_data"], ensure_ascii=False),
-            "analysis_stream_url": analysis_stream_url,
-            "analysis_stream_payload_json": json.dumps(
-                {"type": type_code, "dimensions": dimensions},
-                ensure_ascii=False,
-            ),
+            "analysis_card_url": analysis_card_url,
+            "analysis_card_payload_json": json.dumps({"type": type_code, "dimensions": dimensions}, ensure_ascii=False),
         },
     )
 
@@ -1051,8 +1047,7 @@ def analysis_page_post(
         return RedirectResponse(url="/", status_code=303)
 
     core = _analysis_core(type_code, dimensions)
-    base = str(request.url_for("analysis_async_content"))
-    analysis_stream_url = base
+    analysis_card_url = str(request.url_for("analysis_card_content"))
 
     return templates.TemplateResponse(
         request,
@@ -1061,11 +1056,145 @@ def analysis_page_post(
             "type_code": type_code,
             "mbti_type": type_code,
             "radar_data_json": json.dumps(core["radar_data"], ensure_ascii=False),
-            "analysis_stream_url": analysis_stream_url,
-            "analysis_stream_payload_json": json.dumps(
-                {"type": type_code, "dimensions": dimensions},
-                ensure_ascii=False,
-            ),
+            "analysis_card_url": analysis_card_url,
+            "analysis_card_payload_json": json.dumps({"type": type_code, "dimensions": dimensions}, ensure_ascii=False),
+        },
+    )
+
+
+@router.post("/analysis/content_card", response_class=HTMLResponse, name="analysis_card_content")
+async def analysis_card_content(request: Request, db: Session = Depends(get_db)):
+    try:
+        body = await request.json()
+        data = body if isinstance(body, dict) else {}
+    except Exception:
+        data = {}
+
+    mbti_type = str(data.get("type") or "").strip()
+    raw_dimensions = data.get("dimensions")
+
+    if isinstance(raw_dimensions, str):
+        dimensions_json = raw_dimensions
+    elif raw_dimensions is None:
+        dimensions_json = "{}"
+    else:
+        try:
+            dimensions_json = json.dumps(raw_dimensions, ensure_ascii=False)
+        except Exception:
+            dimensions_json = "{}"
+
+    if not mbti_type:
+        fun_data = get_fallback_data("缺少 type 参数")
+        return templates.TemplateResponse(
+            request,
+            "partials/analysis_content.html",
+            {
+                "fun_data": fun_data,
+                "conflict_pair": "T vs F",
+                "war_left_pole": "T",
+                "war_left_percent": 50,
+                "war_right_pole": "F",
+                "war_right_percent": 50,
+            },
+        )
+
+    core = _analysis_core(mbti_type, dimensions_json)
+    conflict_pair = core["conflict_pair"]
+    val1 = int(core["val1"])
+    val2 = int(core["val2"])
+    letter_dims = core["letter_dims"]
+
+    prompt = f"""
+用户MBTI: {mbti_type}
+各维度分值: {json.dumps(letter_dims, ensure_ascii=False)}
+内心最冲突的维度: {conflict_pair[0]} (score: {val1}) vs {conflict_pair[1]} (score: {val2}) - 分值极度接近。
+
+请基于以上数据，生成“用户使用说明书”和“内心维度战争”分析。
+必须严格输出纯 JSON 格式，无 Markdown：
+{{
+    "manual": {{
+        "do_list": ["3个让该用户感到被理解的行为"],
+        "dont_list": ["3个该用户的绝对雷区"],
+        "recharge": "1个具体的快速回血方式"
+    }},
+    "war": {{
+        "title": "冲突维度的具象化比喻 (如：理性的暴君 vs 感性的诗人)",
+        "description": "深度分析这种纠结带来的困扰与优势。"
+    }}
+}}
+""".strip()
+
+    fun_data: dict[str, object]
+    try:
+        if AsyncOpenAI is None:
+            raise RuntimeError("OpenAI SDK 未安装或导入失败")
+
+        api_key = os.getenv("MBTI_AI_API_KEY")
+        if not api_key:
+            raise RuntimeError("未配置 MBTI_AI_API_KEY")
+
+        base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.siliconflow.cn/v1")
+        model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3.2")
+
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        try:
+            resp = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": "你必须只输出纯 JSON。"},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False,
+                timeout=60.0,
+            )
+        finally:
+            try:
+                await client.close()
+            except Exception:
+                pass
+
+        content = ""
+        try:
+            content = resp.choices[0].message.content or ""
+        except Exception as e:
+            raise RuntimeError(f"AI 响应为空或结构异常: {e}") from e
+
+        try:
+            fun_data_obj = json.loads(content)
+        except Exception:
+            extracted = _extract_json_object(content)
+            if not extracted:
+                raise ValueError("AI 未返回可解析的 JSON 对象")
+            fun_data_obj = json.loads(extracted)
+
+        if not isinstance(fun_data_obj, dict):
+            raise ValueError("AI JSON 顶层不是对象")
+
+        manual = fun_data_obj.get("manual")
+        war = fun_data_obj.get("war")
+        if not isinstance(manual, dict) or not isinstance(war, dict):
+            raise ValueError("AI JSON 缺少 manual/war 对象")
+        if not isinstance(manual.get("do_list"), list) or not isinstance(manual.get("dont_list"), list):
+            raise ValueError("manual.do_list / manual.dont_list 必须是数组")
+        if not isinstance(manual.get("recharge"), str) or not manual.get("recharge"):
+            raise ValueError("manual.recharge 必须是非空字符串")
+        if not isinstance(war.get("title"), str) or not isinstance(war.get("description"), str):
+            raise ValueError("war.title / war.description 必须是字符串")
+
+        fun_data = fun_data_obj
+    except Exception as e:
+        fun_data = get_fallback_data(str(e))
+
+    return templates.TemplateResponse(
+        request,
+        "partials/analysis_content.html",
+        {
+            "fun_data": fun_data,
+            "conflict_pair": f"{conflict_pair[0]} vs {conflict_pair[1]}",
+            "war_left_pole": core["war_left_pole"],
+            "war_left_percent": int(core["war_left_percent"]),
+            "war_right_pole": core["war_right_pole"],
+            "war_right_percent": int(core["war_right_percent"]),
         },
     )
 

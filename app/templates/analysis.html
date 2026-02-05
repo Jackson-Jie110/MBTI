@@ -23,16 +23,12 @@
       </div>
     </div>
 
-    <div class="card min-h-[300px]">
-      <h2 class="card-title">
-        <span class="card-title__text">个人说明书 · 维度战争</span>
-      </h2>
-
-      <div id="analysis-loading-box" class="flex flex-col items-center justify-center py-12 space-y-4 text-indigo-400/60">
+    <div id="ai-analysis-container" class="min-h-[400px]">
+      <div id="loading-spinner" class="py-20 flex flex-col items-center justify-center space-y-4">
         <svg
-          width="32"
-          height="32"
-          style="width: 32px; height: 32px; min-width: 32px;"
+          width="40"
+          height="40"
+          style="width: 40px; height: 40px; min-width: 40px;"
           class="animate-spin text-indigo-500"
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
@@ -45,13 +41,8 @@
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
           ></path>
         </svg>
-        <p class="text-sm font-medium animate-pulse">DeepSeek 正在深度分析你的灵魂维度...</p>
+        <p class="text-gray-400 text-sm animate-pulse">正在解析你的性格代码...</p>
       </div>
-
-      <div
-        id="analysis-result-box"
-        class="ai-content prose prose-indigo prose-sm md:prose-base max-w-none text-gray-700 leading-relaxed hidden"
-      ></div>
     </div>
 
     <div class="card">
@@ -62,7 +53,6 @@
   </div>
 
   <script src="{{ url_for('static', path='js/chart.umd.min.js') }}" data-chartjs="1"></script>
-  <script src="{{ url_for('static', path='js/stream_loader.js') }}"></script>
   <script>
     (function () {
       const canvas = document.getElementById("radarChart");
@@ -156,12 +146,37 @@
   </script>
 
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      const apiUrl = "{{ analysis_stream_url }}";
-      const basePayload = {{ analysis_stream_payload_json | safe }};
+    document.addEventListener("DOMContentLoaded", function () {
+      const container = document.getElementById("ai-analysis-container");
+      const loading = document.getElementById("loading-spinner");
+
+      const apiUrl = "{{ analysis_card_url }}";
+      const basePayload = {{ analysis_card_payload_json | safe }};
       const params = Object.fromEntries(new URLSearchParams(window.location.search));
       const payload = Object.assign({}, basePayload, params);
-      window.loadStream?.(apiUrl, "analysis-result-box", "analysis-loading-box", payload);
+
+      fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then((response) => {
+          if (!response.ok) throw new Error("Network response was not ok");
+          return response.text();
+        })
+        .then((html) => {
+          if (loading) loading.remove();
+          container.innerHTML = html;
+        })
+        .catch((err) => {
+          container.innerHTML = `
+            <div class="p-6 bg-red-50 border border-red-100 rounded-xl text-center">
+              <p class="text-red-600 font-bold mb-2">分析生成失败</p>
+              <p class="text-red-400 text-sm">${String(err && err.message ? err.message : err)}</p>
+              <button onclick="location.reload()" class="mt-4 text-xs bg-white border border-red-200 px-3 py-1 rounded hover:bg-red-50">重试</button>
+            </div>
+          `;
+        });
     });
   </script>
 {% endblock %}
