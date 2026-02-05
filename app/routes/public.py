@@ -644,7 +644,150 @@ def _rpg_radar_from_dimensions(dims: dict[str, object]) -> list[int]:
     return [creativity, execution, logic, empathy, adaptability, social]
 
 
-def _analysis_template(request: Request, type_code: str, dimensions_json: str) -> HTMLResponse:
+def _closest_conflict_dimension(dims: dict[str, object]) -> dict[str, object]:
+    best: dict[str, object] | None = None
+    for dim_key in ("EI", "SN", "TF", "JP"):
+        raw = dims.get(dim_key)
+        if not isinstance(raw, dict):
+            continue
+        try:
+            first_pole = str(raw.get("first_pole") or "")
+            second_pole = str(raw.get("second_pole") or "")
+            first_percent = int(raw.get("first_percent"))
+            second_percent = int(raw.get("second_percent"))
+            gap = abs(first_percent - second_percent)
+        except Exception:
+            continue
+
+        cur = {
+            "dimension": dim_key,
+            "first_pole": first_pole,
+            "second_pole": second_pole,
+            "first_percent": max(0, min(100, first_percent)),
+            "second_percent": max(0, min(100, second_percent)),
+            "gap_percent": max(0, min(100, gap)),
+        }
+        if best is None or int(cur["gap_percent"]) < int(best["gap_percent"]):
+            best = cur
+
+    return best or {
+        "dimension": "TF",
+        "first_pole": "T",
+        "second_pole": "F",
+        "first_percent": 50,
+        "second_percent": 50,
+        "gap_percent": 0,
+    }
+
+
+def _fallback_fun_analysis(type_code: str, conflict_pair: str) -> dict[str, object]:
+    return {
+        "manual": {
+            "do_list": ["先确认他的感受，再讨论结论", "给他一点独处与缓冲时间", "用具体例子说话"],
+            "dont_list": ["当众逼问表态", "用“你怎么这么敏感/冷漠”贴标签", "临时改计划不说明原因"],
+            "recharge": "在安静空间独处一会儿，做一件可控的小事。",
+        },
+        "war": {
+            "title": f"{conflict_pair} 的拉扯",
+            "description": "你的内心像一场拔河：一边想要确定与秩序，一边渴望自由与柔软。学会让两者轮流执勤，你会更稳定也更有力量。",
+        },
+    }
+
+
+def _extract_json_object(text: str) -> str | None:
+    s = (text or "").strip()
+    if not s:
+        return None
+    if s.startswith("```"):
+        s = s.strip("`").strip()
+    start = s.find("{")
+    end = s.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    return s[start : end + 1]
+
+
+async def _generate_fun_analysis(type_code: str, conflict: dict[str, object]) -> dict[str, object]:
+    if AsyncOpenAI is None:
+        return _fallback_fun_analysis(type_code, f"{conflict.get('first_pole')} vs {conflict.get('second_pole')}")
+
+    api_key = os.getenv("MBTI_AI_API_KEY")
+    base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.siliconflow.cn/v1")
+    model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3")
+    if not api_key:
+        return _fallback_fun_analysis(type_code, f"{conflict.get('first_pole')} vs {conflict.get('second_pole')}")
+
+    first_pole = str(conflict.get("first_pole") or "")
+    second_pole = str(conflict.get("second_pole") or "")
+    fp = int(conflict.get("first_percent") or 50)
+    sp = int(conflict.get("second_percent") or 50)
+
+    prompt = f"""
+你是一个输出严格 JSON 的生成器。你必须只输出 1 个合法 JSON 对象，不能包含任何多余字符、解释、前后缀、Markdown、代码块。
+
+用户 MBTI 类型：{type_code}
+冲突战场：{first_pole}({fp}%) vs {second_pole}({sp}%)
+
+请输出如下结构（键名必须完全一致）：
+{{
+  "manual": {{
+    "do_list": ["..."],
+    "dont_list": ["..."],
+    "recharge": "..."
+  }},
+  "war": {{
+    "title": "...",
+    "description": "..."
+  }}
+}}
+
+约束：
+1) do_list / dont_list 各 3-5 条，中文，具体可执行。
+2) recharge 1 句话，<= 25 字。
+3) title <= 18 字，要有画面感；description 80-140 字，描写内耗与和解建议。
+4) 严禁输出 null，严禁输出除上述键以外的新键。
+""".strip()
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    try:
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "You output JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            stream=False,
+            timeout=30.0,
+        )
+        content = ""
+        try:
+            content = resp.choices[0].message.content or ""
+        except Exception:
+            content = ""
+
+        extracted = _extract_json_object(content)
+        if not extracted:
+            return _fallback_fun_analysis(type_code, f"{first_pole} vs {second_pole}")
+        try:
+            data = json.loads(extracted)
+        except Exception:
+            return _fallback_fun_analysis(type_code, f"{first_pole} vs {second_pole}")
+
+        if not isinstance(data, dict):
+            return _fallback_fun_analysis(type_code, f"{first_pole} vs {second_pole}")
+        if not isinstance(data.get("manual"), dict) or not isinstance(data.get("war"), dict):
+            return _fallback_fun_analysis(type_code, f"{first_pole} vs {second_pole}")
+        return data
+    except Exception:
+        return _fallback_fun_analysis(type_code, f"{first_pole} vs {second_pole}")
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            pass
+
+
+async def _analysis_template(request: Request, type_code: str, dimensions_json: str) -> HTMLResponse:
     try:
         dims = json.loads(dimensions_json)
         if not isinstance(dims, dict):
@@ -653,6 +796,21 @@ def _analysis_template(request: Request, type_code: str, dimensions_json: str) -
         dims = {}
 
     radar_data = _rpg_radar_from_dimensions(dims) if dims else [50, 50, 50, 50, 50, 50]
+    conflict = _closest_conflict_dimension(dims) if dims else _closest_conflict_dimension({})
+
+    # For Versus Bar: left is dominant pole (indigo), right is the weaker pole (pink).
+    fp = int(conflict.get("first_percent") or 50)
+    sp = int(conflict.get("second_percent") or 50)
+    first_pole = str(conflict.get("first_pole") or "")
+    second_pole = str(conflict.get("second_pole") or "")
+    if fp >= sp:
+        war_left = {"pole": first_pole, "percent": fp}
+        war_right = {"pole": second_pole, "percent": sp}
+    else:
+        war_left = {"pole": second_pole, "percent": sp}
+        war_right = {"pole": first_pole, "percent": fp}
+
+    fun_analysis = await _generate_fun_analysis(type_code, conflict)
 
     return templates.TemplateResponse(
         request,
@@ -660,12 +818,18 @@ def _analysis_template(request: Request, type_code: str, dimensions_json: str) -
         {
             "type_code": type_code,
             "radar_data_json": json.dumps(radar_data, ensure_ascii=False),
+            "fun_analysis": fun_analysis,
+            "conflict_pair": f"{first_pole} vs {second_pole}",
+            "war_left_pole": war_left["pole"],
+            "war_left_percent": int(war_left["percent"]),
+            "war_right_pole": war_right["pole"],
+            "war_right_percent": int(war_right["percent"]),
         },
     )
 
 
 @router.get("/analysis", response_class=HTMLResponse)
-def analysis_page_get(
+async def analysis_page_get(
     request: Request,
     db: Session = Depends(get_db),
     type_code: str = Query("", alias="type"),
@@ -673,11 +837,11 @@ def analysis_page_get(
 ):
     if not type_code or not dimensions:
         return RedirectResponse(url="/", status_code=303)
-    return _analysis_template(request, type_code, dimensions)
+    return await _analysis_template(request, type_code, dimensions)
 
 
 @router.post("/analysis", response_class=HTMLResponse)
-def analysis_page_post(
+async def analysis_page_post(
     request: Request,
     db: Session = Depends(get_db),
     type_code: str = Form("", alias="type"),
@@ -685,7 +849,7 @@ def analysis_page_post(
 ):
     if not type_code or not dimensions:
         return RedirectResponse(url="/", status_code=303)
-    return _analysis_template(request, type_code, dimensions)
+    return await _analysis_template(request, type_code, dimensions)
 
 
 @router.get("/result/ai_stream/{share_token}")
