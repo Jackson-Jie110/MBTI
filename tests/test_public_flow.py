@@ -148,5 +148,6 @@ def test_complete_flow_generates_result(client, db):
     result = client.get(r2.headers["location"])
     assert result.status_code == 200
     assert "ESTJ" in result.text
-    assert 'id="ai-result-section"' in result.text
+    assert 'id="ai-loading-box"' in result.text
+    assert 'id="ai-result-box"' in result.text
     assert "/result/ai_content/" in result.text

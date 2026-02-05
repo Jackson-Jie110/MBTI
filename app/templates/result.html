@@ -74,33 +74,30 @@
         <p class="muted ai-card__subtitle">基于你的类型，给出更偏“心灵侧写”的文字解读。</p>
       </div>
 
-      <div
-        id="ai-result-section"
-        class="min-h-[200px] p-6 bg-white/50 rounded-xl border border-indigo-50/50"
-        hx-get="{{ result_ai_async_url }}"
-        hx-trigger="load"
-        hx-swap="innerHTML"
-      >
-        <div class="flex flex-col items-center justify-center py-10 space-y-4">
-          <svg
-            width="32"
-            height="32"
-            style="width: 32px; height: 32px; min-width: 32px;"
-            class="animate-spin h-8 w-8 text-indigo-500 ai-loading__spinner"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path
-              class="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
-          </svg>
-          <p class="text-sm font-medium text-indigo-400/80 animate-pulse">DeepSeek 正在连接你的思维宇宙...</p>
-        </div>
+      <div id="ai-loading-box" class="flex flex-col items-center justify-center py-10 space-y-4">
+        <svg
+          width="32"
+          height="32"
+          style="width: 32px; height: 32px; min-width: 32px;"
+          class="animate-spin h-8 w-8 text-indigo-500 ai-loading__spinner"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path
+            class="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
+        </svg>
+        <p class="text-sm font-medium text-indigo-400/80 animate-pulse">DeepSeek 正在连接你的思维宇宙...</p>
       </div>
+
+      <div
+        id="ai-result-box"
+        class="ai-content prose prose-indigo prose-sm md:prose-base max-w-none text-gray-700 leading-relaxed hidden"
+      ></div>
     </div>
 
     <div class="card result-full">
@@ -169,4 +166,12 @@
       </div>
     </div>
   </div>
+
+  <script src="{{ url_for('static', path='js/stream_loader.js') }}"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const apiUrl = "{{ result_ai_stream_url }}";
+      window.loadStream?.(apiUrl, "ai-result-box", "ai-loading-box");
+    });
+  </script>
 {% endblock %}

@@ -605,7 +605,7 @@ def result_page(request: Request, share_token: str, db: Session = Depends(get_db
             "report": report,
             "share_url": str(request.base_url)[:-1] + f"/result/{share_token}",
             "share_token": share_token,
-            "result_ai_async_url": str(request.url_for("result_ai_content", share_token=share_token)),
+            "result_ai_stream_url": str(request.url_for("result_ai_content", share_token=share_token)),
         },
     )
 
@@ -641,17 +641,17 @@ async def result_ai_content(request: Request, share_token: str, db: Session = De
         .one_or_none()
     )
     if not test_row or test_row.status != "completed" or not test_row.result_json:
-        return templates.TemplateResponse(
-            request,
-            "partials/result_ai_content.html",
-            {"ai_content_html": _markdown_to_html("**⚠️ 结果不存在或已失效。**")},
+        return StreamingResponse(
+            iter(["\n\n**⚠️ 结果不存在或已失效。**\n"]),
+            media_type="text/plain; charset=utf-8",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     if test_row.share_expires_at and datetime.now(timezone.utc) > _as_utc(test_row.share_expires_at):
-        return templates.TemplateResponse(
-            request,
-            "partials/result_ai_content.html",
-            {"ai_content_html": _markdown_to_html("**⚠️ 分享链接已过期。**")},
+        return StreamingResponse(
+            iter(["\n\n**⚠️ 分享链接已过期。**\n"]),
+            media_type="text/plain; charset=utf-8",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
     result = test_row.result_json or {}
@@ -763,53 +763,61 @@ async def result_ai_content(request: Request, share_token: str, db: Session = De
 
     user_prompt = f"我的 MBTI 类型是：{type_code}。请开始你的深度解读。"
 
-    try:
-        api_key = os.getenv("MBTI_AI_API_KEY")
-        base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.siliconflow.cn/v1")
-        model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3.2")
+    api_key = os.getenv("MBTI_AI_API_KEY")
+    base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.siliconflow.cn/v1")
+    model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3.2")
+
+    async def generator():
         if not api_key:
-            raise RuntimeError("系统未配置 MBTI_AI_API_KEY")
+            yield "\n\n**❌ AI 生成失败**\n\n错误：系统未配置 MBTI_AI_API_KEY\n"
+            return
         if AsyncOpenAI is None:
-            raise RuntimeError("OpenAI SDK 不可用")
+            yield "\n\n**❌ AI 生成失败**\n\n错误：OpenAI SDK 不可用\n"
+            return
 
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         try:
-            resp = await client.chat.completions.create(
+            stream = await client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                stream=False,
+                stream=True,
                 timeout=60.0,
             )
+
+            async for chunk in stream:
+                if await request.is_disconnected():
+                    break
+                try:
+                    choices = getattr(chunk, "choices", None)
+                    if not choices:
+                        continue
+                    delta = getattr(choices[0], "delta", None)
+                    if not delta:
+                        continue
+                    content = getattr(delta, "content", None)
+                    if not content:
+                        continue
+                    yield str(content)
+                except Exception:
+                    continue
+        except Exception as e:
+            err = str(e).strip()
+            if len(err) > 240:
+                err = err[:240] + "..."
+            yield f"\n\n**❌ AI 生成失败**\n\n错误：{err}\n"
         finally:
             try:
                 await client.close()
             except Exception:
                 pass
 
-        ai_text = ""
-        try:
-            ai_text = resp.choices[0].message.content or ""
-        except Exception:
-            ai_text = ""
-
-        if not ai_text.strip():
-            raise RuntimeError("AI 返回内容为空")
-
-        cleaned_md = _clean_ai_markdown(ai_text)
-        ai_content_html = _markdown_to_html(cleaned_md)
-    except Exception as e:
-        err = str(e).strip()
-        if len(err) > 240:
-            err = err[:240] + "..."
-        ai_content_html = _markdown_to_html(f"**❌ AI 生成失败**\n\n错误：{err}")
-
-    return templates.TemplateResponse(
-        request,
-        "partials/result_ai_content.html",
-        {"ai_content_html": ai_content_html},
+    return StreamingResponse(
+        generator(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
@@ -1009,7 +1017,7 @@ def analysis_page_get(
 
     core = _analysis_core(type_code, dimensions)
     base = str(request.url_for("analysis_async_content"))
-    analysis_async_url = f"{base}?type={quote_plus(type_code)}&dimensions={quote_plus(dimensions)}"
+    analysis_stream_url = f"{base}?type={quote_plus(type_code)}&dimensions={quote_plus(dimensions)}"
 
     return templates.TemplateResponse(
         request,
@@ -1018,7 +1026,7 @@ def analysis_page_get(
             "type_code": type_code,
             "mbti_type": type_code,
             "radar_data_json": json.dumps(core["radar_data"], ensure_ascii=False),
-            "analysis_async_url": analysis_async_url,
+            "analysis_stream_url": analysis_stream_url,
         },
     )
 
@@ -1035,7 +1043,7 @@ def analysis_page_post(
 
     core = _analysis_core(type_code, dimensions)
     base = str(request.url_for("analysis_async_content"))
-    analysis_async_url = f"{base}?type={quote_plus(type_code)}&dimensions={quote_plus(dimensions)}"
+    analysis_stream_url = f"{base}?type={quote_plus(type_code)}&dimensions={quote_plus(dimensions)}"
 
     return templates.TemplateResponse(
         request,
@@ -1044,7 +1052,7 @@ def analysis_page_post(
             "type_code": type_code,
             "mbti_type": type_code,
             "radar_data_json": json.dumps(core["radar_data"], ensure_ascii=False),
-            "analysis_async_url": analysis_async_url,
+            "analysis_stream_url": analysis_stream_url,
         },
     )
 
@@ -1066,95 +1074,80 @@ async def analysis_async_content(
     letter_dims = core["letter_dims"]
 
     prompt = f"""
+你是一位风格鲜明但克制的心理分析师。请直接输出 Markdown（不要代码块，不要开场白），结构如下：
+
+### ✅ 正确饲养指南
+- (3-5 条可执行建议)
+
+### ❌ 禁忌操作预警
+- (3-5 条绝对雷区)
+
+### 🔋 快速充电方式
+(1 句话，<=25 字)
+
+### ⚔️ 维度战争：一句话比喻标题
+(80-140 字，写出内耗的困扰与优势，并给出温柔的和解建议)
+
 用户MBTI: {type_code}
 各维度分值: {json.dumps(letter_dims, ensure_ascii=False)}
 内心最冲突的维度: {conflict_pair[0]} (score: {val1}) vs {conflict_pair[1]} (score: {val2}) - 分值极度接近。
-
-请基于以上数据，生成“用户使用说明书”和“内心维度战争”分析。
-必须严格输出纯 JSON 格式，无 Markdown：
-{{
-    "manual": {{
-        "do_list": ["3个让该用户感到被理解的行为"],
-        "dont_list": ["3个该用户的绝对雷区"],
-        "recharge": "1个具体的快速回血方式"
-    }},
-    "war": {{
-        "title": "冲突维度的具象化比喻 (如：理性的暴君 vs 感性的诗人)",
-        "description": "深度分析这种纠结带来的困扰与优势。"
-    }}
-}}
 """.strip()
 
-    fun_data: dict[str, object]
-    try:
-        if AsyncOpenAI is None:
-            raise RuntimeError("OpenAI SDK 未安装或导入失败")
+    api_key = os.getenv("MBTI_AI_API_KEY")
+    base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.siliconflow.cn/v1")
+    model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3.2")
 
-        api_key = os.getenv("MBTI_AI_API_KEY")
+    async def generator():
         if not api_key:
-            raise RuntimeError("未配置 MBTI_AI_API_KEY")
+            yield "\n\n**❌ AI 生成失败**\n\n错误：系统未配置 MBTI_AI_API_KEY\n"
+            return
+        if AsyncOpenAI is None:
+            yield "\n\n**❌ AI 生成失败**\n\n错误：OpenAI SDK 不可用\n"
+            return
 
-        base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.siliconflow.cn/v1")
-        model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3")
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         try:
-            resp = await client.chat.completions.create(
+            stream = await client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": "你必须只输出纯 JSON。"},
+                    {"role": "system", "content": "You output Markdown only."},
                     {"role": "user", "content": prompt},
                 ],
-                stream=False,
+                stream=True,
                 timeout=60.0,
             )
+
+            async for chunk in stream:
+                if await request.is_disconnected():
+                    break
+                try:
+                    choices = getattr(chunk, "choices", None)
+                    if not choices:
+                        continue
+                    delta = getattr(choices[0], "delta", None)
+                    if not delta:
+                        continue
+                    content = getattr(delta, "content", None)
+                    if not content:
+                        continue
+                    yield str(content)
+                except Exception:
+                    continue
+        except Exception as e:
+            err = str(e).strip()
+            if len(err) > 240:
+                err = err[:240] + "..."
+            yield f"\n\n**❌ AI 生成失败**\n\n错误：{err}\n"
         finally:
             try:
                 await client.close()
             except Exception:
                 pass
 
-        content = ""
-        try:
-            content = resp.choices[0].message.content or ""
-        except Exception as e:
-            raise RuntimeError(f"AI 响应为空或结构异常: {e}") from e
-
-        try:
-            fun_data_obj = json.loads(content)
-        except Exception:
-            extracted = _extract_json_object(content)
-            if not extracted:
-                raise ValueError("AI 未返回可解析的 JSON 对象")
-            fun_data_obj = json.loads(extracted)
-
-        if not isinstance(fun_data_obj, dict):
-            raise ValueError("AI JSON 顶层不是对象")
-        manual = fun_data_obj.get("manual")
-        war = fun_data_obj.get("war")
-        if not isinstance(manual, dict) or not isinstance(war, dict):
-            raise ValueError("AI JSON 缺少 manual/war 对象")
-        if not isinstance(manual.get("do_list"), list) or not isinstance(manual.get("dont_list"), list):
-            raise ValueError("manual.do_list / manual.dont_list 必须是数组")
-        if not isinstance(manual.get("recharge"), str) or not manual.get("recharge"):
-            raise ValueError("manual.recharge 必须是非空字符串")
-        if not isinstance(war.get("title"), str) or not isinstance(war.get("description"), str):
-            raise ValueError("war.title / war.description 必须是字符串")
-
-        fun_data = fun_data_obj
-    except Exception as e:
-        fun_data = get_fallback_data(str(e))
-
-    return templates.TemplateResponse(
-        request,
-        "partials/analysis_content.html",
-        {
-            "fun_data": fun_data,
-            "conflict_pair": f"{conflict_pair[0]} vs {conflict_pair[1]}",
-            "war_left_pole": core["war_left_pole"],
-            "war_left_percent": int(core["war_left_percent"]),
-            "war_right_pole": core["war_right_pole"],
-            "war_right_percent": int(core["war_right_percent"]),
-        },
+    return StreamingResponse(
+        generator(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
