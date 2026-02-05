@@ -7,6 +7,7 @@ import json
 import os
 import traceback
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, Request, Query
 from fastapi import HTTPException
@@ -749,26 +750,11 @@ def _rpg_radar_from_letter_dimensions(dimensions: dict[str, int]) -> list[int]:
     return [creativity, execution, logic, empathy, adaptability, social]
 
 
-async def _analysis_template(request: Request, mbti_type: str, dimensions_json: str) -> HTMLResponse:
+def _analysis_core(mbti_type: str, dimensions_json: str) -> dict[str, object]:
     try:
         parsed = json.loads(dimensions_json)
-    except Exception as e:
+    except Exception:
         parsed = {}
-        fun_data = get_fallback_data(f"dimensions 解析失败: {e}")
-        return templates.TemplateResponse(
-            request,
-            "analysis.html",
-            {
-                "type_code": mbti_type,
-                "radar_data_json": json.dumps([50, 50, 50, 50, 50, 50], ensure_ascii=False),
-                "fun_analysis": fun_data,
-                "conflict_pair": "T vs F",
-                "war_left_pole": "T",
-                "war_left_percent": 50,
-                "war_right_pole": "F",
-                "war_right_percent": 50,
-            },
-        )
 
     letter_dims = _normalize_letter_dimensions(parsed)
     conflict_pair = get_conflict_pair(letter_dims)
@@ -780,15 +766,97 @@ async def _analysis_template(request: Request, mbti_type: str, dimensions_json: 
     left_percent = int(round(val1 / total * 100))
     right_percent = 100 - left_percent
     if val2 > val1:
-        # Swap for dominant on the left.
         conflict_pair = (conflict_pair[1], conflict_pair[0])
         val1, val2 = val2, val1
         left_percent, right_percent = right_percent, left_percent
 
     radar_data = _rpg_radar_from_letter_dimensions(letter_dims)
 
+    return {
+        "mbti_type": mbti_type,
+        "dimensions_json": dimensions_json,
+        "letter_dims": letter_dims,
+        "conflict_pair": conflict_pair,
+        "val1": val1,
+        "val2": val2,
+        "war_left_pole": conflict_pair[0],
+        "war_left_percent": left_percent,
+        "war_right_pole": conflict_pair[1],
+        "war_right_percent": right_percent,
+        "radar_data": radar_data,
+    }
+
+
+@router.get("/analysis", response_class=HTMLResponse)
+def analysis_page_get(
+    request: Request,
+    db: Session = Depends(get_db),
+    type_code: str = Query("", alias="type"),
+    dimensions: str | None = Query(None),
+):
+    if not type_code or not dimensions:
+        return RedirectResponse(url="/", status_code=303)
+
+    core = _analysis_core(type_code, dimensions)
+    base = str(request.url_for("analysis_async_content"))
+    analysis_async_url = f"{base}?type={quote_plus(type_code)}&dimensions={quote_plus(dimensions)}"
+
+    return templates.TemplateResponse(
+        request,
+        "analysis.html",
+        {
+            "type_code": type_code,
+            "mbti_type": type_code,
+            "radar_data_json": json.dumps(core["radar_data"], ensure_ascii=False),
+            "analysis_async_url": analysis_async_url,
+        },
+    )
+
+
+@router.post("/analysis", response_class=HTMLResponse)
+def analysis_page_post(
+    request: Request,
+    db: Session = Depends(get_db),
+    type_code: str = Form("", alias="type"),
+    dimensions: str = Form(""),
+):
+    if not type_code or not dimensions:
+        return RedirectResponse(url="/", status_code=303)
+
+    core = _analysis_core(type_code, dimensions)
+    base = str(request.url_for("analysis_async_content"))
+    analysis_async_url = f"{base}?type={quote_plus(type_code)}&dimensions={quote_plus(dimensions)}"
+
+    return templates.TemplateResponse(
+        request,
+        "analysis.html",
+        {
+            "type_code": type_code,
+            "mbti_type": type_code,
+            "radar_data_json": json.dumps(core["radar_data"], ensure_ascii=False),
+            "analysis_async_url": analysis_async_url,
+        },
+    )
+
+
+@router.get("/analysis/content", response_class=HTMLResponse, name="analysis_async_content")
+async def analysis_async_content(
+    request: Request,
+    db: Session = Depends(get_db),
+    type_code: str = Query("", alias="type"),
+    dimensions: str | None = Query(None),
+):
+    if not type_code or not dimensions:
+        return HTMLResponse("", status_code=400)
+
+    core = _analysis_core(type_code, dimensions)
+    conflict_pair = core["conflict_pair"]
+    val1 = int(core["val1"])
+    val2 = int(core["val2"])
+    letter_dims = core["letter_dims"]
+
     prompt = f"""
-用户MBTI: {mbti_type}
+用户MBTI: {type_code}
 各维度分值: {json.dumps(letter_dims, ensure_ascii=False)}
 内心最冲突的维度: {conflict_pair[0]} (score: {val1}) vs {conflict_pair[1]} (score: {val2}) - 分值极度接近。
 
@@ -827,7 +895,7 @@ async def _analysis_template(request: Request, mbti_type: str, dimensions_json: 
                     {"role": "user", "content": prompt},
                 ],
                 stream=False,
-                timeout=30.0,
+                timeout=60.0,
             )
         finally:
             try:
@@ -868,42 +936,16 @@ async def _analysis_template(request: Request, mbti_type: str, dimensions_json: 
 
     return templates.TemplateResponse(
         request,
-        "analysis.html",
+        "partials/analysis_content.html",
         {
-            "type_code": mbti_type,
-            "radar_data_json": json.dumps(radar_data, ensure_ascii=False),
-            "fun_analysis": fun_data,
+            "fun_data": fun_data,
             "conflict_pair": f"{conflict_pair[0]} vs {conflict_pair[1]}",
-            "war_left_pole": conflict_pair[0],
-            "war_left_percent": left_percent,
-            "war_right_pole": conflict_pair[1],
-            "war_right_percent": right_percent,
+            "war_left_pole": core["war_left_pole"],
+            "war_left_percent": int(core["war_left_percent"]),
+            "war_right_pole": core["war_right_pole"],
+            "war_right_percent": int(core["war_right_percent"]),
         },
     )
-
-
-@router.get("/analysis", response_class=HTMLResponse)
-async def analysis_page_get(
-    request: Request,
-    db: Session = Depends(get_db),
-    type_code: str = Query("", alias="type"),
-    dimensions: str | None = Query(None),
-):
-    if not type_code or not dimensions:
-        return RedirectResponse(url="/", status_code=303)
-    return await _analysis_template(request, type_code, dimensions)
-
-
-@router.post("/analysis", response_class=HTMLResponse)
-async def analysis_page_post(
-    request: Request,
-    db: Session = Depends(get_db),
-    type_code: str = Form("", alias="type"),
-    dimensions: str = Form(""),
-):
-    if not type_code or not dimensions:
-        return RedirectResponse(url="/", status_code=303)
-    return await _analysis_template(request, type_code, dimensions)
 
 
 @router.get("/result/ai_stream/{share_token}")
