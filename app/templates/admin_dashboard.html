@@ -49,21 +49,21 @@
                 <div class="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center text-3xl">📨</div>
                 <div>
                     <div class="text-gray-400 text-xs font-bold uppercase tracking-wider">累计反馈</div>
-                    <div class="text-4xl font-black text-gray-800">{{ total_count }}</div>
+                    <div class="text-4xl font-black text-gray-800" id="total-count-value">{{ total_count }}</div>
                 </div>
             </div>
             <div class="bg-white p-6 rounded-2xl shadow-[0_4px_20px_-4px_rgba(219,39,119,0.1)] border border-pink-50 flex items-center gap-5">
                 <div class="w-16 h-16 rounded-2xl bg-pink-50 flex items-center justify-center text-3xl">⭐</div>
                 <div>
                     <div class="text-gray-400 text-xs font-bold uppercase tracking-wider">平均评分</div>
-                    <div class="text-4xl font-black text-gray-800">{{ avg_rating }}</div>
+                    <div class="text-4xl font-black text-gray-800" id="avg-rating-value">{{ avg_rating }}</div>
                 </div>
             </div>
         </div>
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-                <h3 class="font-bold text-gray-700">反馈列表 ({{ total_count }})</h3>
+                <h3 class="font-bold text-gray-700">反馈列表 (<span id="visible-count-value">{{ total_count }}</span>)</h3>
                 <div class="flex gap-2">
                      <select id="filter-rating" class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-400">
                         <option value="all">全部评分</option>
@@ -135,6 +135,78 @@
         const card = document.getElementById('delete-card');
         const confirmBtn = document.getElementById('confirm-delete-btn');
         const checkbox = document.getElementById('dont-ask-today');
+        const filterRating = document.getElementById('filter-rating');
+        const tableBody = document.getElementById('table-body');
+        const totalCountValue = document.getElementById('total-count-value');
+        const avgRatingValue = document.getElementById('avg-rating-value');
+        const visibleCountValue = document.getElementById('visible-count-value');
+        const dynamicEmptyRowId = 'dynamic-empty-row';
+
+        function getFeedbackRows() {
+            return Array.from(tableBody.querySelectorAll('tr[data-rating]'));
+        }
+
+        function removeDynamicEmptyRow() {
+            const node = document.getElementById(dynamicEmptyRowId);
+            if (node) {
+                node.remove();
+            }
+        }
+
+        function renderDynamicEmptyRow(message) {
+            removeDynamicEmptyRow();
+            const row = document.createElement('tr');
+            row.id = dynamicEmptyRowId;
+            row.innerHTML = `<td colspan="6" class="px-6 py-20 text-center text-gray-400">${message}</td>`;
+            tableBody.appendChild(row);
+        }
+
+        function updateSummaryCards() {
+            const rows = getFeedbackRows();
+            const total = rows.length;
+            const scoreSum = rows.reduce((sum, row) => sum + (parseInt(row.getAttribute('data-rating')) || 0), 0);
+            const avg = total ? (scoreSum / total).toFixed(1) : '0.0';
+
+            if (totalCountValue) {
+                totalCountValue.textContent = String(total);
+            }
+            if (avgRatingValue) {
+                avgRatingValue.textContent = avg;
+            }
+        }
+
+        function applyFilter() {
+            const val = filterRating ? filterRating.value : 'all';
+            const rows = getFeedbackRows();
+            let visible = 0;
+
+            rows.forEach(row => {
+                const rating = parseInt(row.getAttribute('data-rating')) || 0;
+                let show = false;
+
+                if (val === 'all') show = true;
+                else if (val === '5') show = rating === 5;
+                else if (val === 'low') show = rating <= 3;
+
+                row.style.display = show ? '' : 'none';
+                if (show) visible += 1;
+            });
+
+            if (visibleCountValue) {
+                visibleCountValue.textContent = String(visible);
+            }
+
+            if (rows.length === 0) {
+                renderDynamicEmptyRow('暂无反馈数据');
+                return;
+            }
+
+            if (visible === 0) {
+                renderDynamicEmptyRow('当前筛选条件下暂无数据');
+            } else {
+                removeDynamicEmptyRow();
+            }
+        }
 
         function confirmDelete(id) {
             deleteTargetId = id;
@@ -166,7 +238,11 @@
                     const row = document.getElementById(`row-${id}`);
                     if (row) {
                         row.style.opacity = '0';
-                        setTimeout(() => row.remove(), 300);
+                        setTimeout(() => {
+                            row.remove();
+                            updateSummaryCards();
+                            applyFilter();
+                        }, 300);
                     }
                 } else {
                     alert('删除失败');
@@ -186,17 +262,12 @@
             if (deleteTargetId) executeDelete(deleteTargetId);
         };
 
-        document.getElementById('filter-rating').addEventListener('change', function(e) {
-            const val = e.target.value;
-            const rows = document.querySelectorAll('tbody tr');
-            rows.forEach(row => {
-                const r = parseInt(row.getAttribute('data-rating'));
-                if (val === 'all') row.style.display = '';
-                else if (val === '5' && r === 5) row.style.display = '';
-                else if (val === 'low' && r <= 3) row.style.display = '';
-                else row.style.display = 'none';
-            });
-        });
+        if (filterRating) {
+            filterRating.addEventListener('change', applyFilter);
+        }
+
+        updateSummaryCards();
+        applyFilter();
     </script>
 </body>
 </html>
