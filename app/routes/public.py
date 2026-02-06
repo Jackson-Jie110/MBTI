@@ -17,7 +17,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
-from app.models import Answer, Question, Test, TestItem
+from app.models import Answer, Feedback, Question, Test, TestItem
 from app.seeding import seed_questions_if_empty
 from app.services.reporting import build_report_context
 from app.services.selection import select_balanced
@@ -1648,3 +1648,41 @@ async def ai_stream(request: Request, share_token: str, db: Session = Depends(ge
 
     headers = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
     return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
+
+
+@router.post("/submit_feedback", response_class=JSONResponse)
+async def submit_feedback(request: Request, db: Session = Depends(get_db)):
+    try:
+        payload = await request.json()
+        data = payload if isinstance(payload, dict) else {}
+    except Exception:
+        data = {}
+
+    rating_raw = data.get("rating")
+    try:
+        rating = int(rating_raw)
+    except (TypeError, ValueError):
+        rating = 0
+
+    if rating < 1 or rating > 5:
+        return JSONResponse({"error": "请选择评分"}, status_code=400)
+
+    content_raw = data.get("content")
+    content = str(content_raw).strip() if content_raw is not None else None
+    if content == "":
+        content = None
+
+    mbti_type_raw = data.get("mbti_type")
+    mbti_type = str(mbti_type_raw).strip().upper() if mbti_type_raw is not None else None
+    if mbti_type == "":
+        mbti_type = None
+
+    feedback = Feedback(
+        rating=rating,
+        content=content,
+        mbti_type=mbti_type,
+    )
+    db.add(feedback)
+    db.commit()
+
+    return JSONResponse({"message": "感谢您的反馈！"}, status_code=200)

@@ -91,3 +91,16 @@ class Answer(Base):
 
     test: Mapped["Test"] = relationship("Test", back_populates="answers")
     question: Mapped["Question"] = relationship("Question")
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mbti_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    def __repr__(self) -> str:
+        return f"<Feedback {self.mbti_type} - {self.rating} stars>"
