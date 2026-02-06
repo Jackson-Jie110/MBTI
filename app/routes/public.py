@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Form, Request, Query
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
@@ -1686,3 +1687,24 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     return JSONResponse({"message": "感谢您的反馈！"}, status_code=200)
+
+
+@router.get("/admin/dashboard", response_class=HTMLResponse)
+async def admin_dashboard(request: Request, key: str | None = Query(None), db: Session = Depends(get_db)):
+    if key != "jackson_admin":
+        return HTMLResponse("403 Forbidden: 访问被拒绝，请核对密钥。", status_code=403)
+
+    feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
+    total_count = int(db.query(func.count(Feedback.id)).scalar() or 0)
+    avg_result = db.query(func.avg(Feedback.rating)).scalar()
+    avg_rating = round(float(avg_result), 1) if avg_result is not None else 0.0
+
+    return templates.TemplateResponse(
+        request,
+        "admin_dashboard.html",
+        {
+            "feedbacks": feedbacks,
+            "total_count": total_count,
+            "avg_rating": avg_rating,
+        },
+    )

@@ -1,3 +1,18 @@
+window.openFeedbackModal = function openFeedbackModal() {
+  const modal = document.getElementById('feedback-modal');
+  const card = document.getElementById('feedback-card');
+  if (!modal || !card) {
+    return;
+  }
+
+  modal.classList.remove('hidden');
+  setTimeout(() => {
+    modal.classList.remove('opacity-0');
+    card.classList.remove('scale-95');
+    card.classList.add('scale-100');
+  }, 10);
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   const modal = document.getElementById('feedback-modal');
   const card = document.getElementById('feedback-card');
@@ -7,20 +22,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const stars = document.querySelectorAll('.star-btn');
   const contentInput = document.getElementById('feedback-content');
 
-  if (!modal || !card || !btn || !closeBtn || !submitBtn || stars.length === 0) {
+  if (!modal || !card || !closeBtn || !submitBtn || stars.length === 0) {
     return;
   }
 
   let currentRating = 0;
-
-  function showModal() {
-    modal.classList.remove('hidden');
-    setTimeout(() => {
-      modal.classList.remove('opacity-0');
-      card.classList.remove('scale-95');
-      card.classList.add('scale-100');
-    }, 10);
-  }
 
   function hideModal() {
     modal.classList.add('opacity-0');
@@ -50,18 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
     submitBtn.disabled = false;
   }
 
-  btn.addEventListener('click', showModal);
-  closeBtn.addEventListener('click', hideModal);
-
-  if (!localStorage.getItem('hasFeedback')) {
-    setTimeout(() => {
-      if (!localStorage.getItem('hasFeedback')) {
-        showModal();
-      }
-    }, 15000);
-  } else {
-    btn.style.display = 'none';
+  if (btn) {
+    btn.addEventListener('click', window.openFeedbackModal);
   }
+  closeBtn.addEventListener('click', hideModal);
 
   stars.forEach((star) => {
     star.addEventListener('click', function onClick() {
@@ -97,10 +95,16 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(`HTTP ${response.status}`);
       }
 
-      localStorage.setItem('hasFeedback', 'true');
-      submitBtn.innerText = '🎉 感谢您的声音！';
-      btn.style.display = 'none';
-      setTimeout(hideModal, 1500);
+      submitBtn.innerText = '✅ 收到，感谢！';
+      setTimeout(() => {
+        hideModal();
+        resetButtonState();
+        if (contentInput) {
+          contentInput.value = '';
+        }
+        currentRating = 0;
+        updateStars(0);
+      }, 1500);
     } catch (error) {
       console.error(error);
       alert('提交失败，请稍后重试');
