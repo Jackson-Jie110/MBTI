@@ -1,8 +1,24 @@
 window.openFeedbackModal = function openFeedbackModal() {
   const modal = document.getElementById('feedback-modal');
   const card = document.getElementById('feedback-card');
+  const select = document.getElementById('feedback-mbti-select');
   if (!modal || !card) {
     return;
+  }
+
+  let cachedType = localStorage.getItem('user_mbti_cache');
+  if (!cachedType) {
+    const typeEl = document.querySelector('.result-hero__typecode');
+    if (typeEl) {
+      cachedType = typeEl.innerText.trim();
+    }
+  }
+
+  if (cachedType && select) {
+    const options = Array.from(select.options).map((option) => option.value);
+    if (options.includes(cachedType)) {
+      select.value = cachedType;
+    }
   }
 
   modal.classList.remove('hidden');
@@ -21,8 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const submitBtn = document.getElementById('submit-feedback-btn');
   const stars = document.querySelectorAll('.star-btn');
   const contentInput = document.getElementById('feedback-content');
+  const mbtiSelect = document.getElementById('feedback-mbti-select');
 
-  if (!modal || !card || !closeBtn || !submitBtn || stars.length === 0) {
+  if (!modal || !card || !closeBtn || !submitBtn || stars.length === 0 || !mbtiSelect) {
     return;
   }
 
@@ -75,15 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const content = contentInput ? contentInput.value : '';
-
-    let mbtiType = 'Unknown';
-    const typeElement = document.querySelector('.result-hero__typecode');
-    if (typeElement) {
-      mbtiType = typeElement.innerText.trim();
-    } else {
-      const urlParams = new URLSearchParams(window.location.search);
-      mbtiType = urlParams.get('type') || 'Unknown';
-    }
+    const mbtiType = mbtiSelect.value;
 
     submitBtn.innerText = '提交中...';
     submitBtn.disabled = true;

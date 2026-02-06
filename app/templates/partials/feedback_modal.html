@@ -27,6 +27,34 @@
       <button data-val="5" class="star-btn text-3xl text-gray-300 hover:text-yellow-400 transition-colors">★</button>
     </div>
 
+    <div class="mb-4">
+      <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">本次测试结果</label>
+      <div class="relative">
+        <select id="feedback-mbti-select" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl appearance-none text-gray-700 font-bold focus:ring-2 focus:ring-purple-500 outline-none transition-all">
+          <option value="Unknown">-- 未自动识别 (请选择) --</option>
+          <option value="INTJ">INTJ (建筑师)</option>
+          <option value="INTP">INTP (逻辑学家)</option>
+          <option value="ENTJ">ENTJ (指挥官)</option>
+          <option value="ENTP">ENTP (辩论家)</option>
+          <option value="INFJ">INFJ (提倡者)</option>
+          <option value="INFP">INFP (调停者)</option>
+          <option value="ENFJ">ENFJ (主人公)</option>
+          <option value="ENFP">ENFP (竞选者)</option>
+          <option value="ISTJ">ISTJ (物流师)</option>
+          <option value="ISFJ">ISFJ (守卫者)</option>
+          <option value="ESTJ">ESTJ (总经理)</option>
+          <option value="ESFJ">ESFJ (执政官)</option>
+          <option value="ISTP">ISTP (鉴赏家)</option>
+          <option value="ISFP">ISFP (探险家)</option>
+          <option value="ESTP">ESTP (企业家)</option>
+          <option value="ESFP">ESFP (表演者)</option>
+        </select>
+        <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+          ▼
+        </div>
+      </div>
+    </div>
+
     <textarea
       id="feedback-content"
       rows="3"

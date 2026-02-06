@@ -193,6 +193,30 @@
     });
   </script>
 
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const cacheMBTI = () => {
+        const typeEl = document.querySelector('.result-hero__typecode');
+        if (typeEl && typeEl.innerText.trim()) {
+          const type = typeEl.innerText.trim();
+          console.log('MBTI Detect & Cached:', type);
+          localStorage.setItem('user_mbti_cache', type);
+          return true;
+        }
+        return false;
+      };
+
+      if (!cacheMBTI()) {
+        const observer = new MutationObserver(() => {
+          if (cacheMBTI()) {
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+    });
+  </script>
+
   {% include 'partials/feedback_modal.html' %}
   <script src="{{ url_for('static', path='js/feedback.js') }}"></script>
 {% endblock %}
