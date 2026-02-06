@@ -104,3 +104,16 @@ class Feedback(Base):
 
     def __repr__(self) -> str:
         return f"<Feedback {self.mbti_type} - {self.rating} stars>"
+
+
+class ErrorLog(Base):
+    __tablename__ = "error_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    error_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+    def __repr__(self) -> str:
+        return f"<ErrorLog {self.error_type} - {self.created_at}>"

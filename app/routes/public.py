@@ -20,7 +20,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
-from app.models import Answer, Feedback, Question, Test, TestItem
+from app.models import Answer, ErrorLog, Feedback, Question, Test, TestItem
 from app.seeding import seed_questions_if_empty
 from app.services.reporting import build_report_context
 from app.services.selection import select_balanced
@@ -1194,6 +1194,7 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
 """.strip()
 
     fun_data: dict[str, object]
+    raw_content_for_log = ""
     try:
         if AsyncOpenAI is None:
             raise RuntimeError("OpenAI SDK 未安装或导入失败")
@@ -1225,6 +1226,7 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
         content = ""
         try:
             content = resp.choices[0].message.content or ""
+            raw_content_for_log = content
         except Exception as e:
             raise RuntimeError(f"AI 响应为空或结构异常: {e}") from e
 
@@ -1237,18 +1239,33 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
         # 2) Parse JSON with strict=False to tolerate unescaped control chars (e.g., newlines)
         extracted = _extract_json_object(cleaned) or cleaned
         try:
-            fun_data_obj = json.loads(extracted, strict=False)
-        except TypeError:
-            # Older/alternate JSON implementations may not support strict=
-            fun_data_obj = json.loads(extracted)
-        except Exception:
-            extracted2 = _extract_json_object(content)
-            if not extracted2:
-                raise ValueError("AI 未返回可解析的 JSON 对象")
             try:
-                fun_data_obj = json.loads(extracted2, strict=False)
+                fun_data_obj = json.loads(extracted, strict=False)
             except TypeError:
-                fun_data_obj = json.loads(extracted2)
+                fun_data_obj = json.loads(extracted)
+            except Exception:
+                extracted2 = _extract_json_object(content)
+                if not extracted2:
+                    raise ValueError("AI 未返回可解析的 JSON 对象")
+                try:
+                    fun_data_obj = json.loads(extracted2, strict=False)
+                except TypeError:
+                    fun_data_obj = json.loads(extracted2)
+        except Exception as parse_error:
+            error_log = ErrorLog(
+                error_type=type(parse_error).__name__,
+                error_msg=str(parse_error),
+                raw_response=raw_content_for_log,
+            )
+            db.add(error_log)
+            db.commit()
+            return JSONResponse(
+                {
+                    "error": "AI_GENERATION_FAILED",
+                    "message": "AI生成格式异常，请刷新页面重试",
+                },
+                status_code=500,
+            )
 
         if not isinstance(fun_data_obj, dict):
             raise ValueError("AI JSON 顶层不是对象")
@@ -1315,6 +1332,13 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
 
         fun_data = fun_data_obj
     except Exception as e:
+        error_log = ErrorLog(
+            error_type=type(e).__name__,
+            error_msg=str(e),
+            raw_response=raw_content_for_log,
+        )
+        db.add(error_log)
+        db.commit()
         fun_data = get_fallback_data(str(e))
 
     return templates.TemplateResponse(
@@ -1697,6 +1721,7 @@ async def admin_dashboard(request: Request, key: str | None = Query(None), db: S
         return HTMLResponse("403 Forbidden: 访问被拒绝，请核对密钥。", status_code=403)
 
     feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
+    error_logs = db.query(ErrorLog).order_by(ErrorLog.created_at.desc()).all()
     total_count = int(db.query(func.count(Feedback.id)).scalar() or 0)
     avg_result = db.query(func.avg(Feedback.rating)).scalar()
     avg_rating = round(float(avg_result), 1) if avg_result is not None else 0.0
@@ -1706,6 +1731,7 @@ async def admin_dashboard(request: Request, key: str | None = Query(None), db: S
         "admin_dashboard.html",
         {
             "feedbacks": feedbacks,
+            "error_logs": error_logs,
             "total_count": total_count,
             "avg_rating": avg_rating,
         },

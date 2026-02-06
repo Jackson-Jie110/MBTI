@@ -5,269 +5,460 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>用户反馈控制台</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%A7%A9</text></svg>">
     <style>
+        body {
+            background-color: #f8fafc;
+            background-image: radial-gradient(circle at top right, rgba(147, 51, 234, 0.10), transparent 45%),
+                              radial-gradient(circle at top left, rgba(236, 72, 153, 0.08), transparent 40%);
+        }
         .gradient-text {
             background-image: linear-gradient(90deg, #9333ea, #db2777);
             -webkit-background-clip: text;
+            background-clip: text;
             color: transparent;
-        }
-        /* 增加一点背景纹理或光晕，避免死白 */
-        body {
-            background-color: #f8fafc; /* slate-50 */
-            background-image: radial-gradient(circle at 50% 0%, #f3e8ff 0%, transparent 40%);
         }
     </style>
 </head>
 <body class="text-gray-700 font-sans min-h-screen">
-
-    <nav class="bg-white/80 backdrop-blur-md border-b border-purple-100 sticky top-0 z-30">
+    <nav class="bg-white/85 backdrop-blur-md border-b border-purple-100 sticky top-0 z-30">
         <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                    🧩
+                <div class="w-10 h-10 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center text-white shadow-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-6m3 6V7m3 10v-4m3 8H6a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2z" />
+                    </svg>
                 </div>
                 <div>
-                    <h1 class="text-lg font-bold text-gray-800">用户反馈控制台</h1>
-                    <p class="text-xs text-purple-500">Admin Dashboard</p>
+                    <h1 class="text-lg font-bold gradient-text">用户反馈控制台</h1>
+                    <p class="text-xs text-purple-500">运营洞察 / 系统监控</p>
                 </div>
             </div>
-            <div class="flex gap-4">
-                <a href="{{ request.url_for('export_feedbacks') }}?key={{ request.query_params.get('key', '') }}" class="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-colors shadow-sm">
-                    📗 导出 Excel
+            <div class="flex gap-3">
+                <a
+                    href="{{ request.url_for('export_feedbacks') }}?key={{ request.query_params.get('key', '') }}"
+                    class="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-100 transition-colors shadow-sm cursor-pointer"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 12l-4-4m4 4l4-4M4 20h16" />
+                    </svg>
+                    导出 Excel
                 </a>
-                <a href="/" class="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">
-                    ↩ 返回首页
+                <a
+                    href="/"
+                    class="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors cursor-pointer"
+                >
+                    返回首页
                 </a>
             </div>
         </div>
     </nav>
 
-    <div class="max-w-7xl mx-auto px-6 py-10">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div class="bg-white p-6 rounded-2xl shadow-[0_4px_20px_-4px_rgba(147,51,234,0.1)] border border-purple-50 flex items-center gap-5">
-                <div class="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center text-3xl">📨</div>
-                <div>
-                    <div class="text-gray-400 text-xs font-bold uppercase tracking-wider">累计反馈</div>
-                    <div class="text-4xl font-black text-gray-800" id="total-count-value">{{ total_count }}</div>
+    <main class="max-w-7xl mx-auto px-6 py-10">
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <article class="bg-white p-6 rounded-2xl border border-purple-100 shadow-[0_8px_30px_-16px_rgba(147,51,234,0.35)]">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5V4H2v16h5m10 0v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6m10 0H7" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="text-gray-400 text-xs font-bold uppercase tracking-wider">累计反馈</div>
+                        <div class="text-4xl font-black text-gray-800" id="total-count-value">{{ total_count }}</div>
+                    </div>
                 </div>
-            </div>
-            <div class="bg-white p-6 rounded-2xl shadow-[0_4px_20px_-4px_rgba(219,39,119,0.1)] border border-pink-50 flex items-center gap-5">
-                <div class="w-16 h-16 rounded-2xl bg-pink-50 flex items-center justify-center text-3xl">⭐</div>
-                <div>
-                    <div class="text-gray-400 text-xs font-bold uppercase tracking-wider">平均评分</div>
-                    <div class="text-4xl font-black text-gray-800" id="avg-rating-value">{{ avg_rating }}</div>
+            </article>
+            <article class="bg-white p-6 rounded-2xl border border-pink-100 shadow-[0_8px_30px_-16px_rgba(219,39,119,0.35)]">
+                <div class="flex items-center gap-4">
+                    <div class="w-14 h-14 rounded-2xl bg-pink-50 flex items-center justify-center text-pink-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l2.037 6.271a1 1 0 00.95.69h6.594c.969 0 1.371 1.24.588 1.81l-5.335 3.876a1 1 0 00-.364 1.118l2.037 6.271c.3.922-.755 1.688-1.538 1.118l-5.335-3.877a1 1 0 00-1.176 0l-5.335 3.877c-.783.57-1.838-.196-1.539-1.118l2.038-6.271a1 1 0 00-.364-1.118L.88 11.698c-.783-.57-.38-1.81.588-1.81h6.594a1 1 0 00.95-.69l2.037-6.271z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="text-gray-400 text-xs font-bold uppercase tracking-wider">平均评分</div>
+                        <div class="text-4xl font-black text-gray-800" id="avg-rating-value">{{ avg_rating }}</div>
+                    </div>
                 </div>
-            </div>
-        </div>
+            </article>
+        </section>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-                <h3 class="font-bold text-gray-700">反馈列表 (<span id="visible-count-value">{{ total_count }}</span>)</h3>
-                <div class="flex gap-2">
-                     <select id="filter-rating" class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-400">
+        <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="px-6 pt-5 pb-3 border-b border-gray-100 bg-gray-50/40">
+                <div class="inline-flex bg-white border border-gray-200 rounded-xl p-1" role="tablist" aria-label="控制台选项卡">
+                    <button
+                        id="tab-feedback"
+                        class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-purple-600 to-pink-600 text-white cursor-pointer"
+                        data-target="panel-feedback"
+                        type="button"
+                    >
+                        用户反馈列表
+                    </button>
+                    <button
+                        id="tab-errors"
+                        class="tab-btn px-4 py-2 rounded-lg text-sm font-semibold text-gray-500 hover:text-gray-700 cursor-pointer"
+                        data-target="panel-errors"
+                        type="button"
+                    >
+                        系统报错日志
+                    </button>
+                </div>
+            </div>
+
+            <div id="panel-feedback" class="tab-panel">
+                <div class="px-6 py-4 border-b border-gray-50 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-white">
+                    <h3 class="font-bold text-gray-700">
+                        反馈列表
+                        <span class="ml-2 text-xs text-gray-400">当前显示 <span id="visible-count-value">{{ total_count }}</span> 条</span>
+                    </h3>
+                    <select id="filter-rating" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500/20">
                         <option value="all">全部评分</option>
                         <option value="5">仅看 5 星</option>
-                        <option value="low">3 星以下</option>
+                        <option value="low">3 星及以下</option>
                     </select>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-50 text-xs uppercase text-gray-400 font-semibold">
+                                <th class="px-6 py-4 w-20">序号</th>
+                                <th class="px-6 py-4 w-40">提交时间</th>
+                                <th class="px-6 py-4 w-28">MBTI</th>
+                                <th class="px-6 py-4 w-40">评分</th>
+                                <th class="px-6 py-4">反馈内容</th>
+                                <th class="px-6 py-4 w-24 text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50 text-sm" id="table-body">
+                            {% for item in feedbacks %}
+                            <tr id="row-{{ item.id }}" class="hover:bg-purple-50/30 transition-colors" data-id="{{ item.id }}" data-rating="{{ item.rating }}">
+                                <td class="px-6 py-4 font-mono text-gray-500 text-sm font-bold row-index">{{ loop.index }}</td>
+                                <td class="px-6 py-4 text-gray-500 whitespace-nowrap">{{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '-' }}</td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex px-2.5 py-1 rounded-md text-xs font-bold bg-purple-50 text-purple-700">
+                                        {{ item.mbti_type or 'Unknown' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <span class="text-yellow-400 tracking-widest">{{ '★' * item.rating }}</span><span class="text-gray-200 tracking-widest">{{ '★' * (5 - item.rating) }}</span>
+                                </td>
+                                <td class="px-6 py-4 text-gray-700 leading-relaxed">{{ item.content or '（用户未填写）' }}</td>
+                                <td class="px-6 py-4 text-right">
+                                    <button
+                                        type="button"
+                                        class="delete-btn inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                        data-id="{{ item.id }}"
+                                        title="删除"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0V5a1 1 0 011-1h4a1 1 0 011 1v2" />
+                                        </svg>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr id="initial-empty-row">
+                                <td colspan="6" class="px-6 py-20 text-center text-gray-400">暂无反馈数据</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-gray-50 text-xs uppercase text-gray-400 font-semibold">
-                            <th class="px-6 py-4 w-20">序号</th>
-                            <th class="px-6 py-4">时间</th>
-                            <th class="px-6 py-4">MBTI</th>
-                            <th class="px-6 py-4">评分</th>
-                            <th class="px-6 py-4 w-1/3">内容</th>
-                            <th class="px-6 py-4 text-right">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-50 text-sm" id="table-body">
-                        {% for item in feedbacks %}
-                        <tr class="hover:bg-purple-50/20 transition-colors group" id="row-{{ item.id }}" data-rating="{{ item.rating }}">
-                            <td class="px-6 py-4 font-mono text-gray-500 text-sm font-bold">{{ loop.index }}</td>
-                            <td class="px-6 py-4 text-gray-500">{{ item.created_at.strftime('%m-%d %H:%M') if item.created_at else '未知' }}</td>
-                            <td class="px-6 py-4">
-                                <span class="px-2 py-1 rounded bg-purple-50 text-purple-700 text-xs font-bold">
-                                    {{ item.mbti_type or '未知' }}
-                                </span>
-                            </td>
-                            <td class="px-6 py-4">
-                                <span class="text-yellow-400 tracking-widest">{{ '★' * item.rating }}</span><span class="text-gray-200 tracking-widest">{{ '★' * (5 - item.rating) }}</span>
-                            </td>
-                            <td class="px-6 py-4 text-gray-700">{{ item.content or '-' }}</td>
-                            <td class="px-6 py-4 text-right">
-                                <button onclick="confirmDelete({{ item.id }})" class="text-gray-300 hover:text-red-500 transition-colors p-2" title="删除">
-                                    🗑️
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <div id="panel-errors" class="tab-panel hidden bg-red-50/40">
+                <div class="px-6 py-4 border-b border-red-100 bg-red-50/70">
+                    <h3 class="font-bold text-red-700">系统报错日志</h3>
+                    <p class="text-xs text-red-500 mt-1">记录 AI 生成异常与原始响应，便于快速排查线上问题。</p>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-red-50 border-b border-red-100 text-xs uppercase text-red-400 font-semibold">
+                                <th class="px-6 py-4 w-20">ID</th>
+                                <th class="px-6 py-4 w-44">报错时间</th>
+                                <th class="px-6 py-4 w-40">错误类型</th>
+                                <th class="px-6 py-4">错误详情</th>
+                                <th class="px-6 py-4 w-28 text-right">原始数据</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-red-100 text-sm">
+                            {% for item in error_logs %}
+                            <tr class="hover:bg-red-100/40 transition-colors">
+                                <td class="px-6 py-4 font-mono text-red-500">#{{ item.id }}</td>
+                                <td class="px-6 py-4 text-red-500 whitespace-nowrap">{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else '-' }}</td>
+                                <td class="px-6 py-4">
+                                    <span class="inline-flex px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-red-600 border border-red-200">
+                                        {{ item.error_type or 'Exception' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-red-700">
+                                    {% set msg = item.error_msg or '' %}
+                                    {% if msg|length > 50 %}
+                                        {{ msg[:50] }}...
+                                    {% else %}
+                                        {{ msg or '（无错误详情）' }}
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <button
+                                        type="button"
+                                        class="view-raw-btn inline-flex px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 text-xs hover:bg-red-50 transition-colors cursor-pointer"
+                                    >
+                                        查看
+                                    </button>
+                                    <span class="raw-value hidden">{{ item.raw_response or '' }}</span>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="px-6 py-20 text-center text-red-300">暂无系统报错日志</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
-    </div>
+        </section>
+    </main>
 
     <div id="delete-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-gray-900/50 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl p-6 w-96 shadow-2xl transform transition-all scale-95 opacity-0" id="delete-card">
-            <h3 class="text-lg font-bold text-gray-800 mb-2">确认删除？</h3>
-            <p class="text-gray-500 text-sm mb-4">此操作无法撤销，确定要删除这条反馈吗？</p>
-            
+        <div id="delete-card" class="bg-white rounded-2xl p-6 w-[92%] max-w-sm shadow-2xl scale-95 opacity-0 transition-all">
+            <h3 class="text-lg font-bold text-gray-800 mb-2">确认删除这条反馈？</h3>
+            <p class="text-gray-500 text-sm mb-4">删除后无法恢复，请谨慎操作。</p>
             <div class="flex items-center mb-6">
                 <input type="checkbox" id="dont-ask-today" class="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500">
                 <label for="dont-ask-today" class="ml-2 text-sm text-gray-600">今日不再提醒</label>
             </div>
-
             <div class="flex justify-end gap-3">
-                <button onclick="closeDeleteModal()" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm">取消</button>
-                <button id="confirm-delete-btn" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm shadow-md">确认删除</button>
+                <button id="cancel-delete-btn" type="button" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm cursor-pointer">取消</button>
+                <button id="confirm-delete-btn" type="button" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm shadow-md cursor-pointer">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="raw-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-gray-900/55 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl w-[92%] max-w-3xl shadow-2xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="font-bold text-gray-800">原始响应数据</h3>
+                <button id="close-raw-btn" type="button" class="text-gray-400 hover:text-gray-600 text-xl leading-none cursor-pointer">×</button>
+            </div>
+            <div class="p-5 max-h-[60vh] overflow-auto bg-gray-50">
+                <pre id="raw-content" class="text-xs leading-6 text-gray-700 whitespace-pre-wrap break-words"></pre>
             </div>
         </div>
     </div>
 
     <script>
-        let deleteTargetId = null;
-        const modal = document.getElementById('delete-modal');
-        const card = document.getElementById('delete-card');
-        const confirmBtn = document.getElementById('confirm-delete-btn');
-        const checkbox = document.getElementById('dont-ask-today');
-        const filterRating = document.getElementById('filter-rating');
-        const tableBody = document.getElementById('table-body');
-        const totalCountValue = document.getElementById('total-count-value');
-        const avgRatingValue = document.getElementById('avg-rating-value');
-        const visibleCountValue = document.getElementById('visible-count-value');
-        const dynamicEmptyRowId = 'dynamic-empty-row';
+        document.addEventListener('DOMContentLoaded', () => {
+            const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
+            const tabPanels = Array.from(document.querySelectorAll('.tab-panel'));
 
-        function getFeedbackRows() {
-            return Array.from(tableBody.querySelectorAll('tr[data-rating]'));
-        }
+            const filterRating = document.getElementById('filter-rating');
+            const tableBody = document.getElementById('table-body');
+            const totalCountValue = document.getElementById('total-count-value');
+            const avgRatingValue = document.getElementById('avg-rating-value');
+            const visibleCountValue = document.getElementById('visible-count-value');
+            const dynamicEmptyRowId = 'dynamic-empty-row';
 
-        function removeDynamicEmptyRow() {
-            const node = document.getElementById(dynamicEmptyRowId);
-            if (node) {
-                node.remove();
+            const deleteModal = document.getElementById('delete-modal');
+            const deleteCard = document.getElementById('delete-card');
+            const dontAskToday = document.getElementById('dont-ask-today');
+            const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+            const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+            let deleteTargetId = null;
+
+            const rawModal = document.getElementById('raw-modal');
+            const rawContent = document.getElementById('raw-content');
+            const closeRawBtn = document.getElementById('close-raw-btn');
+
+            function switchTab(targetId) {
+                tabButtons.forEach((button) => {
+                    const isActive = button.dataset.target === targetId;
+                    button.classList.toggle('bg-gradient-to-r', isActive);
+                    button.classList.toggle('from-purple-600', isActive);
+                    button.classList.toggle('to-pink-600', isActive);
+                    button.classList.toggle('text-white', isActive);
+                    button.classList.toggle('text-gray-500', !isActive);
+                });
+
+                tabPanels.forEach((panel) => {
+                    panel.classList.toggle('hidden', panel.id !== targetId);
+                });
             }
-        }
 
-        function renderDynamicEmptyRow(message) {
-            removeDynamicEmptyRow();
-            const row = document.createElement('tr');
-            row.id = dynamicEmptyRowId;
-            row.innerHTML = `<td colspan="6" class="px-6 py-20 text-center text-gray-400">${message}</td>`;
-            tableBody.appendChild(row);
-        }
-
-        function updateSummaryCards() {
-            const rows = getFeedbackRows();
-            const total = rows.length;
-            const scoreSum = rows.reduce((sum, row) => sum + (parseInt(row.getAttribute('data-rating')) || 0), 0);
-            const avg = total ? (scoreSum / total).toFixed(1) : '0.0';
-
-            if (totalCountValue) {
-                totalCountValue.textContent = String(total);
-            }
-            if (avgRatingValue) {
-                avgRatingValue.textContent = avg;
-            }
-        }
-
-        function applyFilter() {
-            const val = filterRating ? filterRating.value : 'all';
-            const rows = getFeedbackRows();
-            let visible = 0;
-
-            rows.forEach(row => {
-                const rating = parseInt(row.getAttribute('data-rating')) || 0;
-                let show = false;
-
-                if (val === 'all') show = true;
-                else if (val === '5') show = rating === 5;
-                else if (val === 'low') show = rating <= 3;
-
-                row.style.display = show ? '' : 'none';
-                if (show) visible += 1;
+            tabButtons.forEach((button) => {
+                button.addEventListener('click', () => switchTab(button.dataset.target));
             });
 
-            if (visibleCountValue) {
-                visibleCountValue.textContent = String(visible);
+            function getFeedbackRows() {
+                if (!tableBody) return [];
+                return Array.from(tableBody.querySelectorAll('tr[data-rating]'));
             }
 
-            if (rows.length === 0) {
-                renderDynamicEmptyRow('暂无反馈数据');
-                return;
+            function removeDynamicEmptyRow() {
+                const emptyNode = document.getElementById(dynamicEmptyRowId);
+                if (emptyNode) emptyNode.remove();
             }
 
-            if (visible === 0) {
-                renderDynamicEmptyRow('当前筛选条件下暂无数据');
-            } else {
+            function renderDynamicEmptyRow(message) {
                 removeDynamicEmptyRow();
-            }
-        }
-
-        function confirmDelete(id) {
-            deleteTargetId = id;
-
-            const suppressUntil = localStorage.getItem('suppressDeleteConfirm');
-            if (suppressUntil && new Date().getTime() < parseInt(suppressUntil)) {
-                executeDelete(id);
-                return;
+                if (!tableBody) return;
+                const row = document.createElement('tr');
+                row.id = dynamicEmptyRowId;
+                row.innerHTML = `<td colspan="6" class="px-6 py-20 text-center text-gray-400">${message}</td>`;
+                tableBody.appendChild(row);
             }
 
-            modal.classList.remove('hidden');
-            setTimeout(() => {
-                card.classList.remove('scale-95', 'opacity-0');
-                card.classList.add('scale-100', 'opacity-100');
-            }, 10);
-        }
+            function refreshRowIndexes() {
+                const rows = getFeedbackRows();
+                rows.forEach((row, index) => {
+                    const idxCell = row.querySelector('.row-index');
+                    if (idxCell) {
+                        idxCell.textContent = String(index + 1);
+                    }
+                });
+            }
 
-        function closeDeleteModal() {
-            card.classList.remove('scale-100', 'opacity-100');
-            card.classList.add('scale-95', 'opacity-0');
-            setTimeout(() => modal.classList.add('hidden'), 200);
-        }
+            function updateSummaryCards() {
+                const rows = getFeedbackRows();
+                const total = rows.length;
+                const scoreSum = rows.reduce((sum, row) => sum + (parseInt(row.getAttribute('data-rating')) || 0), 0);
+                const avg = total > 0 ? (scoreSum / total).toFixed(1) : '0.0';
 
-        async function executeDelete(id) {
-            const currentKey = new URLSearchParams(window.location.search).get('key');
-            try {
-                const res = await fetch(`/admin/delete_feedback/${id}?key=${currentKey}`, { method: 'DELETE' });
-                if (res.ok) {
+                if (totalCountValue) totalCountValue.textContent = String(total);
+                if (avgRatingValue) avgRatingValue.textContent = avg;
+            }
+
+            function applyFeedbackFilter() {
+                const value = filterRating ? filterRating.value : 'all';
+                const rows = getFeedbackRows();
+                let visible = 0;
+
+                rows.forEach((row) => {
+                    const rating = parseInt(row.getAttribute('data-rating')) || 0;
+                    const show = value === 'all' || (value === '5' && rating === 5) || (value === 'low' && rating <= 3);
+                    row.style.display = show ? '' : 'none';
+                    if (show) visible += 1;
+                });
+
+                if (visibleCountValue) visibleCountValue.textContent = String(visible);
+
+                if (rows.length === 0) {
+                    renderDynamicEmptyRow('暂无反馈数据');
+                } else if (visible === 0) {
+                    renderDynamicEmptyRow('当前筛选条件下暂无数据');
+                } else {
+                    removeDynamicEmptyRow();
+                    const initialEmpty = document.getElementById('initial-empty-row');
+                    if (initialEmpty) initialEmpty.remove();
+                }
+            }
+
+            function openDeleteModal(id) {
+                deleteTargetId = id;
+                const suppressUntil = localStorage.getItem('suppressDeleteConfirm');
+                if (suppressUntil && Date.now() < parseInt(suppressUntil, 10)) {
+                    executeDelete(id);
+                    return;
+                }
+
+                deleteModal.classList.remove('hidden');
+                setTimeout(() => {
+                    deleteCard.classList.remove('scale-95', 'opacity-0');
+                    deleteCard.classList.add('scale-100', 'opacity-100');
+                }, 10);
+            }
+
+            function closeDeleteModal() {
+                deleteCard.classList.remove('scale-100', 'opacity-100');
+                deleteCard.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => deleteModal.classList.add('hidden'), 180);
+            }
+
+            async function executeDelete(id) {
+                const currentKey = new URLSearchParams(window.location.search).get('key') || '';
+                try {
+                    const response = await fetch(`/admin/delete_feedback/${id}?key=${encodeURIComponent(currentKey)}`, {
+                        method: 'DELETE',
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
                     const row = document.getElementById(`row-${id}`);
                     if (row) {
                         row.style.opacity = '0';
                         setTimeout(() => {
                             row.remove();
+                            refreshRowIndexes();
                             updateSummaryCards();
-                            applyFilter();
-                        }, 300);
+                            applyFeedbackFilter();
+                        }, 220);
                     }
-                } else {
-                    alert('删除失败');
+                } catch (error) {
+                    console.error(error);
+                    alert('删除失败，请稍后重试');
+                } finally {
+                    closeDeleteModal();
                 }
-            } catch (err) {
-                console.error(err);
-                alert('网络错误');
             }
-            closeDeleteModal();
-        }
 
-        confirmBtn.onclick = function() {
-            if (checkbox.checked) {
-                const tomorrow = new Date().getTime() + 24 * 60 * 60 * 1000;
-                localStorage.setItem('suppressDeleteConfirm', tomorrow);
+            document.querySelectorAll('.delete-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const id = btn.getAttribute('data-id');
+                    if (id) openDeleteModal(id);
+                });
+            });
+
+            if (confirmDeleteBtn) {
+                confirmDeleteBtn.addEventListener('click', () => {
+                    if (dontAskToday && dontAskToday.checked) {
+                        localStorage.setItem('suppressDeleteConfirm', String(Date.now() + 24 * 60 * 60 * 1000));
+                    }
+                    if (deleteTargetId) {
+                        executeDelete(deleteTargetId);
+                    }
+                });
             }
-            if (deleteTargetId) executeDelete(deleteTargetId);
-        };
 
-        if (filterRating) {
-            filterRating.addEventListener('change', applyFilter);
-        }
+            if (cancelDeleteBtn) {
+                cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+            }
 
-        updateSummaryCards();
-        applyFilter();
+            function openRawModal(text) {
+                rawContent.textContent = text || '（无原始数据）';
+                rawModal.classList.remove('hidden');
+            }
+
+            function closeRawModal() {
+                rawModal.classList.add('hidden');
+            }
+
+            document.querySelectorAll('.view-raw-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const raw = btn.parentElement ? btn.parentElement.querySelector('.raw-value') : null;
+                    openRawModal(raw ? raw.textContent : '');
+                });
+            });
+
+            if (closeRawBtn) closeRawBtn.addEventListener('click', closeRawModal);
+            rawModal.addEventListener('click', (event) => {
+                if (event.target === rawModal) closeRawModal();
+            });
+
+            if (filterRating) {
+                filterRating.addEventListener('change', applyFeedbackFilter);
+            }
+
+            refreshRowIndexes();
+            updateSummaryCards();
+            applyFeedbackFilter();
+            switchTab('panel-feedback');
+        });
     </script>
 </body>
 </html>
