@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, Form, Request, Query
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from json_repair import repair_json
 from openpyxl import Workbook
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -1308,21 +1309,17 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
             cleaned = re.sub(r"^```(?:json)?[ \t]*\r?\n?", "", cleaned, flags=re.IGNORECASE)
             cleaned = re.sub(r"\r?\n?```$", "", cleaned).strip()
 
-        # 2) Parse JSON with strict=False to tolerate unescaped control chars (e.g., newlines)
-        extracted = _extract_json_object(cleaned) or cleaned
+        # 2) Parse JSON with json_repair to auto-fix common format errors
         try:
+            fun_data_obj = repair_json(content, return_objects=True)
+        except Exception:
             try:
-                fun_data_obj = json.loads(extracted, strict=False)
-            except TypeError:
-                fun_data_obj = json.loads(extracted)
+                fun_data_obj = repair_json(cleaned, return_objects=True)
             except Exception:
-                extracted2 = _extract_json_object(content)
-                if not extracted2:
+                extracted = _extract_json_object(cleaned) or _extract_json_object(content)
+                if not extracted:
                     raise ValueError("AI 未返回可解析的 JSON 对象")
-                try:
-                    fun_data_obj = json.loads(extracted2, strict=False)
-                except TypeError:
-                    fun_data_obj = json.loads(extracted2)
+                fun_data_obj = repair_json(extracted, return_objects=True)
         except Exception as parse_error:
             error_log = ErrorLog(
                 error_type=type(parse_error).__name__,
