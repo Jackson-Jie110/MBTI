@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import html
 import hashlib
@@ -9,6 +10,7 @@ import re
 import traceback
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, Request, Query
@@ -42,6 +44,52 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / 
 
 CSRF_COOKIE = "csrf_token"
 TEST_COOKIE = "test_token"
+
+
+@dataclass
+class SimplePagination:
+    items: list[Any]
+    page: int
+    per_page: int
+    total: int
+    pages: int
+
+    @property
+    def has_prev(self) -> bool:
+        return self.page > 1
+
+    @property
+    def has_next(self) -> bool:
+        return self.page < self.pages
+
+    @property
+    def prev_num(self) -> int:
+        return self.page - 1 if self.has_prev else 1
+
+    @property
+    def next_num(self) -> int:
+        return self.page + 1 if self.has_next else self.pages
+
+
+def _paginate_query(query, page: int, per_page: int = 5) -> SimplePagination:
+    safe_per_page = max(1, int(per_page))
+    safe_page = max(1, int(page))
+
+    total = int(query.order_by(None).count())
+    pages = max(1, (total + safe_per_page - 1) // safe_per_page)
+
+    if safe_page > pages:
+        safe_page = pages
+
+    items = query.offset((safe_page - 1) * safe_per_page).limit(safe_per_page).all()
+
+    return SimplePagination(
+        items=items,
+        page=safe_page,
+        per_page=safe_per_page,
+        total=total,
+        pages=pages,
+    )
 
 
 def _app_secret() -> str:
@@ -1746,12 +1794,22 @@ async def submit_feedback(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/admin/dashboard", response_class=HTMLResponse)
-async def admin_dashboard(request: Request, key: str | None = Query(None), db: Session = Depends(get_db)):
+async def admin_dashboard(
+    request: Request,
+    key: str | None = Query(None),
+    page_feedback: int = Query(1, ge=1),
+    page_error: int = Query(1, ge=1),
+    db: Session = Depends(get_db),
+):
     if key != "jackson_admin":
         return HTMLResponse("403 Forbidden: 访问被拒绝，请核对密钥。", status_code=403)
 
-    feedbacks = db.query(Feedback).order_by(Feedback.created_at.desc()).all()
-    error_logs = db.query(ErrorLog).order_by(ErrorLog.created_at.desc()).all()
+    feedback_query = db.query(Feedback).order_by(Feedback.created_at.desc())
+    error_query = db.query(ErrorLog).order_by(ErrorLog.created_at.desc())
+
+    feedbacks = _paginate_query(feedback_query, page_feedback, per_page=5)
+    error_logs = _paginate_query(error_query, page_error, per_page=5)
+
     total_count = int(db.query(func.count(Feedback.id)).scalar() or 0)
     avg_result = db.query(func.avg(Feedback.rating)).scalar()
     avg_rating = round(float(avg_result), 1) if avg_result is not None else 0.0
@@ -1765,6 +1823,8 @@ async def admin_dashboard(request: Request, key: str | None = Query(None), db: S
             "total_count": total_count,
             "avg_rating": avg_rating,
             "timedelta": timedelta,
+            "page_feedback": feedbacks.page,
+            "page_error": error_logs.page,
         },
     )
 
@@ -1781,6 +1841,20 @@ async def delete_feedback(feedback_id: int, key: str | None = Query(None), db: S
     db.delete(feedback)
     db.commit()
     return JSONResponse({"success": True, "message": "删除成功"}, status_code=200)
+
+
+@router.api_route("/admin/error_log/{log_id}/delete", methods=["POST", "DELETE"], response_class=JSONResponse)
+async def delete_error_log(log_id: int, key: str | None = Query(None), db: Session = Depends(get_db)):
+    if key != "jackson_admin":
+        return JSONResponse({"error": "无权操作"}, status_code=403)
+
+    log_item = db.query(ErrorLog).filter(ErrorLog.id == log_id).one_or_none()
+    if log_item is None:
+        return JSONResponse({"error": "日志不存在"}, status_code=404)
+
+    db.delete(log_item)
+    db.commit()
+    return JSONResponse({"success": True}, status_code=200)
 
 
 @router.get("/admin/export_feedbacks")

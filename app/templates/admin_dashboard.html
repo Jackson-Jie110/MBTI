@@ -109,7 +109,7 @@
                 <div class="px-6 py-4 border-b border-gray-50 flex flex-col md:flex-row md:items-center md:justify-between gap-3 bg-white">
                     <h3 class="font-bold text-gray-700">
                         反馈列表
-                        <span class="ml-2 text-xs text-gray-400">当前显示 <span id="visible-count-value">{{ total_count }}</span> 条</span>
+                        <span class="ml-2 text-xs text-gray-400">当前页 <span id="visible-count-value">{{ feedbacks.items|length }}</span> 条 / 共 {{ feedbacks.total }} 条</span>
                     </h3>
                     <select id="filter-rating" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500/20">
                         <option value="all">全部评分</option>
@@ -131,7 +131,7 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-50 text-sm" id="table-body">
-                            {% for item in feedbacks %}
+                            {% for item in feedbacks.items %}
                             <tr id="row-{{ item.id }}" class="hover:bg-purple-50/30 transition-colors" data-id="{{ item.id }}" data-rating="{{ item.rating }}">
                                 <td class="px-6 py-4 font-mono text-gray-500 text-sm font-bold row-index">{{ loop.index }}</td>
                                 <td class="px-6 py-4 text-gray-500 whitespace-nowrap">{{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '-' }}</td>
@@ -165,6 +165,36 @@
                         </tbody>
                     </table>
                 </div>
+
+                <div class="px-6 py-4 border-t border-gray-100 bg-gray-50/40 flex items-center justify-between">
+                    <p class="text-xs text-gray-400">反馈分页：第 {{ feedbacks.page }} / {{ feedbacks.pages }} 页</p>
+                    <div class="flex items-center gap-2">
+                        {% if feedbacks.has_prev %}
+                        <a
+                            href="{{ request.url.path }}?key={{ request.query_params.get('key', '') }}&page_feedback={{ feedbacks.prev_num }}&page_error={{ error_logs.page }}"
+                            class="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 text-sm hover:bg-gray-100 transition-colors"
+                        >上一页</a>
+                        {% else %}
+                        <span class="px-3 py-1.5 rounded-lg border border-gray-100 bg-gray-100 text-gray-300 text-sm cursor-not-allowed">上一页</span>
+                        {% endif %}
+
+                        {% for p in range(1, feedbacks.pages + 1) %}
+                        <a
+                            href="{{ request.url.path }}?key={{ request.query_params.get('key', '') }}&page_feedback={{ p }}&page_error={{ error_logs.page }}"
+                            class="px-3 py-1.5 rounded-lg text-sm border {{ 'bg-purple-600 border-purple-600 text-white' if p == feedbacks.page else 'bg-white border-gray-200 text-gray-600 hover:bg-gray-100' }} transition-colors"
+                        >{{ p }}</a>
+                        {% endfor %}
+
+                        {% if feedbacks.has_next %}
+                        <a
+                            href="{{ request.url.path }}?key={{ request.query_params.get('key', '') }}&page_feedback={{ feedbacks.next_num }}&page_error={{ error_logs.page }}"
+                            class="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 text-sm hover:bg-gray-100 transition-colors"
+                        >下一页</a>
+                        {% else %}
+                        <span class="px-3 py-1.5 rounded-lg border border-gray-100 bg-gray-100 text-gray-300 text-sm cursor-not-allowed">下一页</span>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
 
             <div id="panel-errors" class="tab-panel hidden bg-red-50/40">
@@ -181,11 +211,11 @@
                                 <th class="px-6 py-4 w-44">报错时间</th>
                                 <th class="px-6 py-4 w-40">错误类型</th>
                                 <th class="px-6 py-4">错误详情</th>
-                                <th class="px-6 py-4 w-28 text-right">原始数据</th>
+                                <th class="px-6 py-4 w-32 text-right">操作</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-red-100 text-sm">
-                            {% for item in error_logs %}
+                            {% for item in error_logs.items %}
                             <tr class="hover:bg-red-100/40 transition-colors">
                                 <td class="px-6 py-4 font-mono text-red-500">#{{ item.id }}</td>
                                 <td class="px-6 py-4 text-red-500 whitespace-nowrap text-xs">
@@ -200,12 +230,21 @@
                                     {{ item.error_msg or '（无错误详情）' }}
                                 </td>
                                 <td class="px-6 py-4 text-right">
-                                    <button
-                                        type="button"
-                                        class="view-raw-btn inline-flex px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 text-xs hover:bg-red-50 transition-colors cursor-pointer"
-                                    >
-                                        查看
-                                    </button>
+                                    <div class="inline-flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            class="view-raw-btn inline-flex px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 text-xs hover:bg-red-50 transition-colors cursor-pointer"
+                                        >
+                                            查看
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onclick="deleteErrorLog({{ item.id }})"
+                                            class="inline-flex px-3 py-1.5 rounded-lg bg-red-500 border border-red-500 text-white text-xs hover:bg-red-600 transition-colors shadow-sm cursor-pointer"
+                                        >
+                                            删除
+                                        </button>
+                                    </div>
                                     <span class="raw-value hidden">{{ item.raw_response or '' }}</span>
                                 </td>
                             </tr>
@@ -216,6 +255,36 @@
                             {% endfor %}
                         </tbody>
                     </table>
+                </div>
+
+                <div class="px-6 py-4 border-t border-red-100 bg-red-50/40 flex items-center justify-between">
+                    <p class="text-xs text-red-400">报错分页：第 {{ error_logs.page }} / {{ error_logs.pages }} 页</p>
+                    <div class="flex items-center gap-2">
+                        {% if error_logs.has_prev %}
+                        <a
+                            href="{{ request.url.path }}?key={{ request.query_params.get('key', '') }}&page_feedback={{ feedbacks.page }}&page_error={{ error_logs.prev_num }}"
+                            class="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-red-600 text-sm hover:bg-red-50 transition-colors"
+                        >上一页</a>
+                        {% else %}
+                        <span class="px-3 py-1.5 rounded-lg border border-red-100 bg-red-100/60 text-red-200 text-sm cursor-not-allowed">上一页</span>
+                        {% endif %}
+
+                        {% for p in range(1, error_logs.pages + 1) %}
+                        <a
+                            href="{{ request.url.path }}?key={{ request.query_params.get('key', '') }}&page_feedback={{ feedbacks.page }}&page_error={{ p }}"
+                            class="px-3 py-1.5 rounded-lg text-sm border {{ 'bg-red-500 border-red-500 text-white' if p == error_logs.page else 'bg-white border-red-200 text-red-600 hover:bg-red-50' }} transition-colors"
+                        >{{ p }}</a>
+                        {% endfor %}
+
+                        {% if error_logs.has_next %}
+                        <a
+                            href="{{ request.url.path }}?key={{ request.query_params.get('key', '') }}&page_feedback={{ feedbacks.page }}&page_error={{ error_logs.next_num }}"
+                            class="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-red-600 text-sm hover:bg-red-50 transition-colors"
+                        >下一页</a>
+                        {% else %}
+                        <span class="px-3 py-1.5 rounded-lg border border-red-100 bg-red-100/60 text-red-200 text-sm cursor-not-allowed">下一页</span>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </section>
@@ -452,10 +521,31 @@
             }
 
             refreshRowIndexes();
-            updateSummaryCards();
-            applyFeedbackFilter();
             switchTab('panel-feedback');
         });
+
+        async function deleteErrorLog(logId) {
+            if (!logId) return;
+            if (!confirm('确定要删除这条报错日志吗？')) return;
+
+            const key = new URLSearchParams(window.location.search).get('key') || '';
+
+            try {
+                const response = await fetch(`/admin/error_log/${logId}/delete?key=${encodeURIComponent(key)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                location.reload();
+            } catch (error) {
+                console.error(error);
+                alert('删除失败，请稍后重试');
+            }
+        }
     </script>
 </body>
 </html>
