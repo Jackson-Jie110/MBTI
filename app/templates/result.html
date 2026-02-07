@@ -172,7 +172,11 @@
     document.addEventListener("DOMContentLoaded", () => {
       const apiUrl = "{{ result_ai_stream_url }}";
       const params = Object.fromEntries(new URLSearchParams(window.location.search));
-      window.loadStream?.(apiUrl, "ai-result-box", "ai-loading-box", params);
+      window.loadStream?.(apiUrl, "ai-result-box", "ai-loading-box", params, {
+        onError: () => {
+          window.showAIErrorModal?.();
+        },
+      });
     });
   </script>
 {% endblock %}

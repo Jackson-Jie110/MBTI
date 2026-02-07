@@ -174,7 +174,10 @@
         body: JSON.stringify(payload),
       })
         .then((response) => {
-          if (!response.ok) throw new Error("Network response was not ok");
+          if (!response.ok) {
+            window.showAIErrorModal?.();
+            throw new Error("Server Error");
+          }
           return response.text();
         })
         .then((html) => {
@@ -182,6 +185,7 @@
           container.innerHTML = html;
         })
         .catch((err) => {
+          window.showAIErrorModal?.();
           container.innerHTML = `
             <div class="p-6 bg-red-50 border border-red-100 rounded-xl text-center">
               <p class="text-red-600 font-bold mb-2">分析生成失败</p>

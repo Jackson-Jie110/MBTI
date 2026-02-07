@@ -28,10 +28,12 @@ function cleanMarkdownText(text) {
  * @param {string} loadingId - 加载动画容器 ID
  * @param {object|null} payload - 可选：POST 的 JSON 数据；若提供则使用 POST
  */
-async function loadStream(url, targetId, loadingId, payload = null) {
+async function loadStream(url, targetId, loadingId, payload = null, options = null) {
   const target = document.getElementById(targetId);
   const loading = document.getElementById(loadingId);
   if (!target) return;
+
+  const onError = options && typeof options.onError === "function" ? options.onError : null;
 
   const showError = (msg) => {
     if (loading) {
@@ -89,6 +91,13 @@ async function loadStream(url, targetId, loadingId, payload = null) {
     }
   } catch (err) {
     console.error("Stream error:", err);
+    if (onError) {
+      try {
+        onError(err);
+      } catch {
+        // ignore callback errors
+      }
+    }
     showError(err && err.message ? err.message : String(err));
   }
 }

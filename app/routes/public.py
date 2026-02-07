@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import html
 import hashlib
 import json
@@ -674,6 +674,21 @@ def _markdown_to_html(md: str) -> str:
     name="result_ai_content",
 )
 async def result_ai_content(request: Request, share_token: str, db: Session = Depends(get_db)):
+    raw_response_for_log = ""
+
+    def _log_ai_error(error: Exception, raw_response: str = "") -> None:
+        try:
+            db.add(
+                ErrorLog(
+                    error_type=type(error).__name__,
+                    error_msg=str(error),
+                    raw_response=raw_response or "Generation Failed",
+                )
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+
     secret = _app_secret()
     token_hash = hash_token(share_token, secret=secret)
     test_row = (
@@ -809,13 +824,18 @@ async def result_ai_content(request: Request, share_token: str, db: Session = De
     base_url = os.getenv("MBTI_AI_BASE_URL", "https://api.siliconflow.cn/v1")
     model = os.getenv("MBTI_AI_MODEL", "deepseek-ai/DeepSeek-V3.2")
 
+    if not api_key:
+        error = RuntimeError("未配置 MBTI_AI_API_KEY")
+        _log_ai_error(error)
+        return JSONResponse({"error": "AI_GENERATION_FAILED", "message": "AI生成失败，请刷新页面重试"}, status_code=500)
+
+    if AsyncOpenAI is None:
+        error = RuntimeError("OpenAI SDK 不可用")
+        _log_ai_error(error)
+        return JSONResponse({"error": "AI_GENERATION_FAILED", "message": "AI生成失败，请刷新页面重试"}, status_code=500)
+
     async def generator_raw():
-        if not api_key:
-            yield "\n\n**❌ AI 生成失败**\n\n错误：系统未配置 MBTI_AI_API_KEY\n"
-            return
-        if AsyncOpenAI is None:
-            yield "\n\n**❌ AI 生成失败**\n\n错误：OpenAI SDK 不可用\n"
-            return
+        nonlocal raw_response_for_log
 
         client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         try:
@@ -842,14 +862,18 @@ async def result_ai_content(request: Request, share_token: str, db: Session = De
                     content = getattr(delta, "content", None)
                     if not content:
                         continue
-                    yield str(content)
+                    piece = str(content)
+                    if len(raw_response_for_log) < 20000:
+                        raw_response_for_log += piece
+                    yield piece
                 except Exception:
                     continue
         except Exception as e:
+            _log_ai_error(e, raw_response_for_log)
             err = str(e).strip()
             if len(err) > 240:
                 err = err[:240] + "..."
-            yield f"\n\n**❌ AI 生成失败**\n\n错误：{err}\n"
+            yield f"\n\n**❌ AI 生成失败**\n\n错误：{err}\n\nAI_GENERATION_FAILED\n"
         finally:
             try:
                 await client.close()
@@ -1339,7 +1363,13 @@ async def analysis_card_content(request: Request, db: Session = Depends(get_db))
         )
         db.add(error_log)
         db.commit()
-        fun_data = get_fallback_data(str(e))
+        return JSONResponse(
+            {
+                "error": "AI_GENERATION_FAILED",
+                "message": "AI生成格式异常，请刷新页面重试",
+            },
+            status_code=500,
+        )
 
     return templates.TemplateResponse(
         request,
@@ -1734,6 +1764,7 @@ async def admin_dashboard(request: Request, key: str | None = Query(None), db: S
             "error_logs": error_logs,
             "total_count": total_count,
             "avg_rating": avg_rating,
+            "timedelta": timedelta,
         },
     )
 

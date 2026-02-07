@@ -140,5 +140,28 @@
         });
       })();
     </script>
+
+    <div id="ai-error-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-gray-900/60 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl p-8 w-[90%] max-w-sm text-center shadow-2xl transform scale-100 transition-all">
+        <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+          ⚠️
+        </div>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">AI 连接中断</h3>
+        <p class="text-gray-500 text-sm mb-6">
+          智脑似乎打了个盹，生成内容失败了。<br>
+          系统已自动记录错误日志。
+        </p>
+        <button onclick="window.location.reload()" class="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-colors shadow-lg shadow-red-500/30">
+          刷新页面重试
+        </button>
+      </div>
+    </div>
+
+    <script>
+      window.showAIErrorModal = function () {
+        const modal = document.getElementById("ai-error-modal");
+        if (modal) modal.classList.remove("hidden");
+      };
+    </script>
   </body>
 </html>

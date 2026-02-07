@@ -188,19 +188,16 @@
                             {% for item in error_logs %}
                             <tr class="hover:bg-red-100/40 transition-colors">
                                 <td class="px-6 py-4 font-mono text-red-500">#{{ item.id }}</td>
-                                <td class="px-6 py-4 text-red-500 whitespace-nowrap">{{ item.created_at.strftime('%Y-%m-%d %H:%M:%S') if item.created_at else '-' }}</td>
+                                <td class="px-6 py-4 text-red-500 whitespace-nowrap text-xs">
+                                    {{ (item.created_at + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S') if item.created_at else '-' }}
+                                </td>
                                 <td class="px-6 py-4">
                                     <span class="inline-flex px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-red-600 border border-red-200">
                                         {{ item.error_type or 'Exception' }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 text-red-700">
-                                    {% set msg = item.error_msg or '' %}
-                                    {% if msg|length > 50 %}
-                                        {{ msg[:50] }}...
-                                    {% else %}
-                                        {{ msg or '（无错误详情）' }}
-                                    {% endif %}
+                                <td class="px-6 py-4 text-red-600 text-xs font-mono break-all whitespace-pre-wrap max-w-md">
+                                    {{ item.error_msg or '（无错误详情）' }}
                                 </td>
                                 <td class="px-6 py-4 text-right">
                                     <button
