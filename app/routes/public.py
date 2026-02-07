@@ -1854,6 +1854,34 @@ async def delete_error_log(log_id: int, key: str | None = Query(None), db: Sessi
     return JSONResponse({"success": True}, status_code=200)
 
 
+@router.post("/admin/feedbacks/clear", response_class=JSONResponse)
+async def clear_feedbacks(key: str | None = Query(None), db: Session = Depends(get_db)):
+    if key != "jackson_admin":
+        return JSONResponse({"success": False, "message": "无权操作"}, status_code=403)
+
+    try:
+        db.query(Feedback).delete(synchronize_session=False)
+        db.commit()
+        return JSONResponse({"success": True}, status_code=200)
+    except Exception as e:
+        db.rollback()
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
+@router.post("/admin/error_logs/clear", response_class=JSONResponse)
+async def clear_error_logs(key: str | None = Query(None), db: Session = Depends(get_db)):
+    if key != "jackson_admin":
+        return JSONResponse({"success": False, "message": "无权操作"}, status_code=403)
+
+    try:
+        db.query(ErrorLog).delete(synchronize_session=False)
+        db.commit()
+        return JSONResponse({"success": True}, status_code=200)
+    except Exception as e:
+        db.rollback()
+        return JSONResponse({"success": False, "message": str(e)}, status_code=500)
+
+
 @router.get("/admin/export_feedbacks")
 async def export_feedbacks(key: str | None = Query(None), db: Session = Depends(get_db)):
     if key != "jackson_admin":

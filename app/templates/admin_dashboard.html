@@ -111,11 +111,20 @@
                         反馈列表
                         <span class="ml-2 text-xs text-gray-400">当前页 <span id="visible-count-value">{{ feedbacks.items|length }}</span> 条 / 共 {{ feedbacks.total }} 条</span>
                     </h3>
-                    <select id="filter-rating" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500/20">
-                        <option value="all">全部评分</option>
-                        <option value="5">仅看 5 星</option>
-                        <option value="low">3 星及以下</option>
-                    </select>
+                    <div class="flex items-center gap-2">
+                        <select id="filter-rating" class="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500/20">
+                            <option value="all">全部评分</option>
+                            <option value="5">仅看 5 星</option>
+                            <option value="low">3 星及以下</option>
+                        </select>
+                        <button
+                            type="button"
+                            onclick="clearAllFeedbacks()"
+                            class="inline-flex items-center px-3.5 py-2 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-100 transition-colors shadow-sm cursor-pointer"
+                        >
+                            一键清空
+                        </button>
+                    </div>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -198,9 +207,18 @@
             </div>
 
             <div id="panel-errors" class="tab-panel hidden bg-red-50/40">
-                <div class="px-6 py-4 border-b border-red-100 bg-red-50/70">
-                    <h3 class="font-bold text-red-700">系统报错日志</h3>
-                    <p class="text-xs text-red-500 mt-1">记录 AI 生成异常与原始响应，便于快速排查线上问题。</p>
+                <div class="px-6 py-4 border-b border-red-100 bg-red-50/70 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div>
+                        <h3 class="font-bold text-red-700">系统报错日志</h3>
+                        <p class="text-xs text-red-500 mt-1">记录 AI 生成异常与原始响应，便于快速排查线上问题。</p>
+                    </div>
+                    <button
+                        type="button"
+                        onclick="clearAllErrors()"
+                        class="inline-flex items-center px-3.5 py-2 rounded-lg bg-red-500 border border-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors shadow-sm cursor-pointer"
+                    >
+                        一键清空日志
+                    </button>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -290,17 +308,23 @@
         </section>
     </main>
 
-    <div id="delete-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-gray-900/50 backdrop-blur-sm">
-        <div id="delete-card" class="bg-white rounded-2xl p-6 w-[92%] max-w-sm shadow-2xl scale-95 opacity-0 transition-all">
-            <h3 class="text-lg font-bold text-gray-800 mb-2">确认删除这条反馈？</h3>
-            <p class="text-gray-500 text-sm mb-4">删除后无法恢复，请谨慎操作。</p>
-            <div class="flex items-center mb-6">
-                <input type="checkbox" id="dont-ask-today" class="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500">
-                <label for="dont-ask-today" class="ml-2 text-sm text-gray-600">今日不再提醒</label>
-            </div>
-            <div class="flex justify-end gap-3">
-                <button id="cancel-delete-btn" type="button" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 text-sm cursor-pointer">取消</button>
-                <button id="confirm-delete-btn" type="button" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm shadow-md cursor-pointer">确认删除</button>
+    <div id="delete-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-gray-900/60 backdrop-blur-sm transition-opacity opacity-0">
+        <div id="delete-modal-content" class="bg-white rounded-2xl p-6 w-[90%] max-w-sm shadow-2xl transform scale-95 transition-transform duration-200">
+            <h3 class="text-xl font-bold text-gray-900 mb-2">确认操作</h3>
+            <p id="delete-modal-msg" class="text-gray-500 text-sm mb-6">您确定要执行此删除操作吗？</p>
+
+            <div class="flex flex-col gap-3">
+                <button id="btn-confirm-delete" type="button" class="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-colors cursor-pointer">
+                    确认删除
+                </button>
+
+                <button id="btn-mute-delete" type="button" class="hidden w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl border border-red-200 transition-colors cursor-pointer">
+                    删除且今日不再提醒
+                </button>
+
+                <button type="button" onclick="closeDeleteModal()" class="w-full py-2.5 text-gray-400 font-bold hover:text-gray-600 transition-colors cursor-pointer">
+                    取消
+                </button>
             </div>
         </div>
     </div>
@@ -330,15 +354,70 @@
             const dynamicEmptyRowId = 'dynamic-empty-row';
 
             const deleteModal = document.getElementById('delete-modal');
-            const deleteCard = document.getElementById('delete-card');
-            const dontAskToday = document.getElementById('dont-ask-today');
-            const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
-            const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
-            let deleteTargetId = null;
+            const deleteModalContent = document.getElementById('delete-modal-content');
+            const deleteModalMsg = document.getElementById('delete-modal-msg');
+            const confirmDeleteBtn = document.getElementById('btn-confirm-delete');
+            const muteDeleteBtn = document.getElementById('btn-mute-delete');
 
             const rawModal = document.getElementById('raw-modal');
             const rawContent = document.getElementById('raw-content');
             const closeRawBtn = document.getElementById('close-raw-btn');
+
+            const adminKey = new URLSearchParams(window.location.search).get('key') || '';
+            const todayString = () => new Date().toDateString();
+
+            function handleOperationError(error) {
+                console.error(error);
+                alert('操作失败，请稍后重试');
+            }
+
+            async function runModalAction(action) {
+                if (typeof action !== 'function') return;
+                try {
+                    await action();
+                } catch (error) {
+                    handleOperationError(error);
+                } finally {
+                    closeDeleteModal();
+                }
+            }
+
+            function openModal(msg, action, allowMute) {
+                if (!deleteModal || !deleteModalContent || !deleteModalMsg) return;
+
+                deleteModalMsg.innerText = msg;
+                confirmDeleteBtn.onclick = () => runModalAction(action);
+
+                if (allowMute) {
+                    muteDeleteBtn.classList.remove('hidden');
+                    muteDeleteBtn.onclick = () => {
+                        localStorage.setItem('admin_mute_delete_date', todayString());
+                        runModalAction(action);
+                    };
+                } else {
+                    muteDeleteBtn.classList.add('hidden');
+                    muteDeleteBtn.onclick = null;
+                }
+
+                deleteModal.classList.remove('hidden');
+                setTimeout(() => {
+                    deleteModal.classList.remove('opacity-0');
+                    deleteModalContent.classList.remove('scale-95');
+                    deleteModalContent.classList.add('scale-100');
+                }, 10);
+            }
+
+            function closeDeleteModal() {
+                if (!deleteModal || !deleteModalContent) return;
+                deleteModal.classList.add('opacity-0');
+                deleteModalContent.classList.remove('scale-100');
+                deleteModalContent.classList.add('scale-95');
+                setTimeout(() => {
+                    deleteModal.classList.add('hidden');
+                }, 180);
+            }
+
+            window.closeDeleteModal = closeDeleteModal;
 
             function switchTab(targetId) {
                 tabButtons.forEach((button) => {
@@ -423,77 +502,96 @@
                 }
             }
 
-            function openDeleteModal(id) {
-                deleteTargetId = id;
-                const suppressUntil = localStorage.getItem('suppressDeleteConfirm');
-                if (suppressUntil && Date.now() < parseInt(suppressUntil, 10)) {
-                    executeDelete(id);
-                    return;
+            async function performFeedbackDelete(id) {
+                const response = await fetch(`/admin/delete_feedback/${id}?key=${encodeURIComponent(adminKey)}`, {
+                    method: 'DELETE',
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
                 }
 
-                deleteModal.classList.remove('hidden');
-                setTimeout(() => {
-                    deleteCard.classList.remove('scale-95', 'opacity-0');
-                    deleteCard.classList.add('scale-100', 'opacity-100');
-                }, 10);
+                const row = document.getElementById(`row-${id}`);
+                if (row) {
+                    row.style.opacity = '0';
+                    setTimeout(() => {
+                        row.remove();
+                        refreshRowIndexes();
+                        updateSummaryCards();
+                        applyFeedbackFilter();
+                    }, 220);
+                }
             }
 
-            function closeDeleteModal() {
-                deleteCard.classList.remove('scale-100', 'opacity-100');
-                deleteCard.classList.add('scale-95', 'opacity-0');
-                setTimeout(() => deleteModal.classList.add('hidden'), 180);
+            function isMuteEnabledToday() {
+                return localStorage.getItem('admin_mute_delete_date') === todayString();
             }
 
-            async function executeDelete(id) {
-                const currentKey = new URLSearchParams(window.location.search).get('key') || '';
-                try {
-                    const response = await fetch(`/admin/delete_feedback/${id}?key=${encodeURIComponent(currentKey)}`, {
-                        method: 'DELETE',
+            function deleteFeedback(id) {
+                const performDelete = () => performFeedbackDelete(id);
+                if (isMuteEnabledToday()) {
+                    performDelete().catch(handleOperationError);
+                    return;
+                }
+                openModal('确定要删除这条反馈吗？删除后不可恢复。', performDelete, true);
+            }
+
+            window.deleteErrorLog = function(logId) {
+                if (!logId) return;
+
+                const performDelete = async () => {
+                    const response = await fetch(`/admin/error_log/${logId}/delete?key=${encodeURIComponent(adminKey)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
                     });
-
                     if (!response.ok) {
                         throw new Error(`HTTP ${response.status}`);
                     }
+                    location.reload();
+                };
 
-                    const row = document.getElementById(`row-${id}`);
-                    if (row) {
-                        row.style.opacity = '0';
-                        setTimeout(() => {
-                            row.remove();
-                            refreshRowIndexes();
-                            updateSummaryCards();
-                            applyFeedbackFilter();
-                        }, 220);
-                    }
-                } catch (error) {
-                    console.error(error);
-                    alert('删除失败，请稍后重试');
-                } finally {
-                    closeDeleteModal();
+                if (isMuteEnabledToday()) {
+                    performDelete().catch(handleOperationError);
+                    return;
                 }
-            }
+
+                openModal('确定要删除这条报错日志吗？', performDelete, true);
+            };
+
+            window.clearAllFeedbacks = function() {
+                const performClear = async () => {
+                    const response = await fetch(`/admin/feedbacks/clear?key=${encodeURIComponent(adminKey)}`, {
+                        method: 'POST',
+                    });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    location.reload();
+                };
+
+                openModal('⚠️ 高能预警：确定要清空所有用户反馈吗？不可恢复！', performClear, false);
+            };
+
+            window.clearAllErrors = function() {
+                const performClear = async () => {
+                    const response = await fetch(`/admin/error_logs/clear?key=${encodeURIComponent(adminKey)}`, {
+                        method: 'POST',
+                    });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    location.reload();
+                };
+
+                openModal('⚠️ 高能预警：确定要清空所有系统报错日志吗？', performClear, false);
+            };
 
             document.querySelectorAll('.delete-btn').forEach((btn) => {
                 btn.addEventListener('click', () => {
-                    const id = btn.getAttribute('data-id');
-                    if (id) openDeleteModal(id);
+                    const id = Number(btn.getAttribute('data-id'));
+                    if (id) deleteFeedback(id);
                 });
             });
-
-            if (confirmDeleteBtn) {
-                confirmDeleteBtn.addEventListener('click', () => {
-                    if (dontAskToday && dontAskToday.checked) {
-                        localStorage.setItem('suppressDeleteConfirm', String(Date.now() + 24 * 60 * 60 * 1000));
-                    }
-                    if (deleteTargetId) {
-                        executeDelete(deleteTargetId);
-                    }
-                });
-            }
-
-            if (cancelDeleteBtn) {
-                cancelDeleteBtn.addEventListener('click', closeDeleteModal);
-            }
 
             function openRawModal(text) {
                 rawContent.textContent = text || '（无原始数据）';
@@ -521,6 +619,7 @@
             }
 
             refreshRowIndexes();
+            applyFeedbackFilter();
 
             const urlParams = new URLSearchParams(window.location.search);
             const activeTab = urlParams.get('active_tab');
@@ -533,29 +632,6 @@
                 feedbackTabBtn?.click();
             }
         });
-
-        async function deleteErrorLog(logId) {
-            if (!logId) return;
-            if (!confirm('确定要删除这条报错日志吗？')) return;
-
-            const key = new URLSearchParams(window.location.search).get('key') || '';
-
-            try {
-                const response = await fetch(`/admin/error_log/${logId}/delete?key=${encodeURIComponent(key)}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-
-                location.reload();
-            } catch (error) {
-                console.error(error);
-                alert('删除失败，请稍后重试');
-            }
-        }
     </script>
 </body>
 </html>
