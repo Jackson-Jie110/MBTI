@@ -33,7 +33,13 @@ function cleanMarkdownText(text) {
 async function loadStream(url, targetId, loadingId, payload = null, options = null) {
   const target = document.getElementById(targetId);
   const loading = document.getElementById(loadingId);
-  if (!target) return;
+  if (!target) return false;
+
+  const currentState = target.dataset.aiStreamState || "";
+  if (currentState === "loading" || currentState === "done") {
+    return currentState === "done";
+  }
+  target.dataset.aiStreamState = "loading";
 
   const onError = options && typeof options.onError === "function" ? options.onError : null;
 
@@ -106,7 +112,12 @@ async function loadStream(url, targetId, loadingId, payload = null, options = nu
         target.innerHTML = safeText.replace(/\n/g, "<br/>");
       }
     }
+
+    const success = !hasTriggeredStreamError;
+    target.dataset.aiStreamState = success ? "done" : "error";
+    return success;
   } catch (err) {
+    target.dataset.aiStreamState = "error";
     console.error("Stream error:", err);
     if (onError) {
       try {
@@ -116,7 +127,109 @@ async function loadStream(url, targetId, loadingId, payload = null, options = nu
       }
     }
     showError(err && err.message ? err.message : String(err));
+    return false;
   }
 }
 
+function deriveResultAiUrl(pathname) {
+  if (!pathname || /\/result\/ai_content\//.test(pathname)) {
+    return "";
+  }
+
+  const replaced = pathname.replace(/\/result\/([^/]+)\/?$/, "/result/ai_content/$1");
+  return replaced === pathname ? "" : replaced;
+}
+
+function getResultStreamConfig(overrideConfig = null) {
+  const globalConfig =
+    window.__resultAIStreamConfig && typeof window.__resultAIStreamConfig === "object"
+      ? window.__resultAIStreamConfig
+      : {};
+  const override = overrideConfig && typeof overrideConfig === "object" ? overrideConfig : {};
+  const merged = { ...globalConfig, ...override };
+
+  const targetId = merged.targetId || "ai-result-box";
+  const loadingId = merged.loadingId || "ai-loading-box";
+  const target = document.getElementById(targetId);
+  if (!target) {
+    return null;
+  }
+
+  const url =
+    merged.url ||
+    merged.apiUrl ||
+    target.getAttribute("data-stream-url") ||
+    deriveResultAiUrl(window.location.pathname || "");
+  if (!url) {
+    return null;
+  }
+
+  const hasPayload = Object.prototype.hasOwnProperty.call(merged, "payload");
+  const payload = hasPayload ? merged.payload : Object.fromEntries(new URLSearchParams(window.location.search));
+  const onError =
+    typeof merged.onError === "function"
+      ? merged.onError
+      : () => {
+          if (typeof window.showAIErrorModal === "function") {
+            window.showAIErrorModal();
+          }
+        };
+
+  return {
+    url,
+    targetId,
+    loadingId,
+    payload,
+    onError,
+  };
+}
+
+async function autoStartResultStream(overrideConfig = null) {
+  const config = getResultStreamConfig(overrideConfig);
+  if (!config) {
+    return false;
+  }
+
+  return loadStream(config.url, config.targetId, config.loadingId, config.payload, {
+    onError: config.onError,
+  });
+}
+
+function scheduleResultStreamStart(overrideConfig = null) {
+  const run = () => {
+    void autoStartResultStream(overrideConfig);
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run, { once: true });
+    return;
+  }
+
+  run();
+}
+
+function bindResultStreamLifecycle() {
+  if (window.__resultStreamLifecycleBound) {
+    return;
+  }
+  window.__resultStreamLifecycleBound = true;
+
+  window.addEventListener("pageshow", () => {
+    scheduleResultStreamStart();
+  });
+
+  document.addEventListener("htmx:load", () => {
+    scheduleResultStreamStart();
+  });
+
+  document.addEventListener("htmx:afterSwap", () => {
+    scheduleResultStreamStart();
+  });
+}
+
 window.loadStream = loadStream;
+window.autoStartResultStream = autoStartResultStream;
+window.scheduleResultStreamStart = scheduleResultStreamStart;
+
+bindResultStreamLifecycle();
+scheduleResultStreamStart();

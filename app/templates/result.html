@@ -96,6 +96,7 @@
 
       <div
         id="ai-result-box"
+        data-stream-url="{{ result_ai_stream_url }}"
         class="ai-content prose prose-indigo prose-sm md:prose-base max-w-none text-gray-700 leading-relaxed hidden"
       ></div>
     </div>
@@ -169,14 +170,16 @@
 
   <script src="{{ url_for('static', path='js/stream_loader.js') }}"></script>
   <script>
-    document.addEventListener("DOMContentLoaded", () => {
-      const apiUrl = "{{ result_ai_stream_url }}";
-      const params = Object.fromEntries(new URLSearchParams(window.location.search));
-      window.loadStream?.(apiUrl, "ai-result-box", "ai-loading-box", params, {
-        onError: () => {
-          window.showAIErrorModal?.();
-        },
-      });
-    });
+    window.__resultAIStreamConfig = {
+      url: "{{ result_ai_stream_url }}",
+      targetId: "ai-result-box",
+      loadingId: "ai-loading-box",
+      payload: Object.fromEntries(new URLSearchParams(window.location.search)),
+      onError: () => {
+        window.showAIErrorModal?.();
+      },
+    };
+
+    window.scheduleResultStreamStart?.(window.__resultAIStreamConfig);
   </script>
 {% endblock %}
