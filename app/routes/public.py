@@ -1896,7 +1896,7 @@ async def export_feedbacks(key: str | None = Query(None), db: Session = Depends(
     worksheet.append(["ID", "提交时间", "MBTI类型", "评分", "反馈详情"])
 
     for item in feedbacks:
-        created_at = item.created_at.strftime("%Y-%m-%d %H:%M:%S") if item.created_at else ""
+        created_at = (item.created_at + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S") if item.created_at else ""
         worksheet.append(
             [
                 item.id,
