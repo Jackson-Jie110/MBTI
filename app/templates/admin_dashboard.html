@@ -143,7 +143,7 @@
                             {% for item in feedbacks.items %}
                             <tr id="row-{{ item.id }}" class="hover:bg-purple-50/30 transition-colors" data-id="{{ item.id }}" data-rating="{{ item.rating }}">
                                 <td class="px-6 py-4 font-mono text-gray-500 text-sm font-bold row-index">{{ loop.index }}</td>
-                                <td class="px-6 py-4 text-gray-500 whitespace-nowrap">{{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '-' }}</td>
+                                <td class="px-6 py-4 text-gray-500 whitespace-nowrap">{{ (item.created_at + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M') if item.created_at else '-' }}</td>
                                 <td class="px-6 py-4">
                                     <span class="inline-flex px-2.5 py-1 rounded-md text-xs font-bold bg-purple-50 text-purple-700">
                                         {{ item.mbti_type or 'Unknown' }}
