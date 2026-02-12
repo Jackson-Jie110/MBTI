@@ -57,6 +57,18 @@
     const MAX_TIE_BREAKERS = 10; // 全局最多加测题数（与后端 extra_max 保持一致）
     const TIE_THRESHOLD = 2; // 分差 > 2 视为已区分（无需加测）
     const addedTieBreakerCounts = { "E-I": 0, "S-N": 0, "T-F": 0, "J-P": 0 };
+    const DIM_TO_PAIR = { EI: "E-I", SN: "S-N", TF: "T-F", JP: "J-P" };
+
+    function hydrateExistingExtraCounts() {
+      for (const q of ALL_QUESTIONS) {
+        if (!q || !q.is_extra) continue;
+        const pair = DIM_TO_PAIR[String(q.dimension || "")];
+        if (!pair) continue;
+        addedTieBreakerCounts[pair] = Number(addedTieBreakerCounts[pair] || 0) + 1;
+      }
+    }
+    hydrateExistingExtraCounts();
+
 
     const LABELS = {
       1: "非常不同意",
@@ -187,6 +199,7 @@
 
       const existingIds = new Set(ALL_QUESTIONS.map((qq) => String(qq.id)));
       let addedAny = false;
+      let firstAddedIndex = null;
 
       for (const { dim, pair } of dimPairs) {
         const totalAdded = Object.values(addedTieBreakerCounts).reduce((a, b) => a + Number(b || 0), 0);
@@ -211,6 +224,7 @@
         }
         if (!picked) continue;
 
+        if (firstAddedIndex === null) firstAddedIndex = ALL_QUESTIONS.length;
         ALL_QUESTIONS.push(Object.assign({}, picked, { is_extra: true }));
         existingIds.add(String(picked.id));
         addedTieBreakerCounts[pair] = usedCount + 1;
@@ -220,6 +234,7 @@
       if (addedAny) {
         setHint("检测到维度得分接近，正在加载高精度测试题...");
         questionContainer.classList.remove("opacity-0");
+        currentIndex = firstAddedIndex ?? Math.max(0, ALL_QUESTIONS.length - 1);
         isAnimating = false;
         setControlsDisabled(false);
         render();
